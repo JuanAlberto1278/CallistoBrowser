@@ -1,0 +1,591 @@
+{
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "date": "2026-11-21T21:07:09.443Z",
+  "loaded": [
+    "Google Translate (aapbdbdomjkkjkaonfhkkikfgjllcleb)",
+    "1Password – Password Manager (aeblfdkhhhdcdjpifhhbdiojplfjncoa)",
+    "JSON Formatter (bcjindcccaagfpapjjmafapmmgkkhgoa)",
+    "AdGuard AdBlocker (bgnkhhnnamicmpeenaelnjfhikgbkllg)",
+    "OneTab (chphlpgkkbolifaimnlloiipkdnihall)",
+    "uBlock Origin Lite (ddkjiahejlhfcafbddmgiahcphecmpfh)",
+    "Tampermonkey (dhdgffkkebhmkfjojejmpbldmpobfkfo)",
+    "Dark Reader (eimadpbcbfnmbkopoojfekhnkhdbieeh)",
+    "React Developer Tools (fmkadmapgofadopljbjfkapdkoienihi)",
+    "Return YouTube Dislike (gebbhagfogifgggkldgodflihgfeippi)",
+    "Google Docs Offline (ghbmnnjooekpmoecnnnilnnbdlolhkhi)",
+    "Wappalyzer - Technology profiler (gppongmhjkpfnbhagpmjfkannfbllamg)",
+    "Grammarly: AI Writing Assistant and Grammar Checker App (kbfnbcaeplbcioakkpcpgfkobkghlhen)",
+    "Video Speed Controller (nffaoalbilbmmfgbnbgppjihopabppdk)",
+    "Bitwarden Password Manager (nngceckbapebfimnlniiiahkandclblb)",
+    "Privacy Badger (pkehgijcmpdhfbdbbnkijodmdjhbjlgp)"
+  ],
+  "results": [
+    {
+      "name": "uBlock Origin Lite",
+      "id": "ddkjiahejlhfcafbddmgiahcphecmpfh",
+      "installed": true,
+      "version": "2026.1116.1650",
+      "manifestVersion": 3,
+      "permissions": [
+        "activeTab",
+        "alarms",
+        "declarativeNetRequest",
+        "offscreen",
+        "scripting",
+        "storage",
+        "unlimitedStorage",
+        "userScripts"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 1,
+      "contentScripts": 0,
+      "popup": "popup.html",
+      "options": "dashboard.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "userScripts"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 13,
+      "pageElements": 53,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "AdGuard AdBlocker",
+      "id": "bgnkhhnnamicmpeenaelnjfhikgbkllg",
+      "installed": true,
+      "version": "5.5.4.78",
+      "manifestVersion": 3,
+      "permissions": [
+        "tabs",
+        "webRequest",
+        "webNavigation",
+        "storage",
+        "unlimitedStorage",
+        "contextMenus",
+        "cookies",
+        "declarativeNetRequest",
+        "declarativeNetRequestFeedback",
+        "scripting",
+        "userScripts"
+      ],
+      "optionalPermissions": [
+        "privacy"
+      ],
+      "hostPermissions": 1,
+      "contentScripts": 5,
+      "popup": "pages/popup.html",
+      "options": "pages/options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "userScripts"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 195,
+      "pageElements": 177,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Privacy Badger",
+      "id": "pkehgijcmpdhfbdbbnkijodmdjhbjlgp",
+      "installed": true,
+      "version": "2026.9.15.2",
+      "manifestVersion": 3,
+      "permissions": [
+        "alarms",
+        "declarativeNetRequest",
+        "privacy",
+        "scripting",
+        "storage",
+        "tabs",
+        "webNavigation",
+        "webRequest"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 1,
+      "contentScripts": 4,
+      "popup": "skin/popup.html",
+      "options": "/skin/options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [],
+      "missingCommonApis": [],
+      "pageTextLength": 210,
+      "pageElements": 113,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Dark Reader",
+      "id": "eimadpbcbfnmbkopoojfekhnkhdbieeh",
+      "installed": true,
+      "version": "4.9.135",
+      "manifestVersion": 3,
+      "permissions": [
+        "alarms",
+        "fontSettings",
+        "scripting",
+        "storage"
+      ],
+      "optionalPermissions": [
+        "contextMenus"
+      ],
+      "hostPermissions": 1,
+      "contentScripts": 3,
+      "popup": "ui/popup/index.html",
+      "options": "ui/popup/index.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "fontSettings"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 1179,
+      "pageElements": 346,
+      "pageConsoleErrors": [
+        "Unrecognized Content-Security-Policy directive 'navigate-to'."
+      ],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Bitwarden",
+      "id": "nngceckbapebfimnlniiiahkandclblb",
+      "installed": true,
+      "version": "2026.11.0",
+      "manifestVersion": 3,
+      "permissions": [
+        "activeTab",
+        "alarms",
+        "clipboardRead",
+        "clipboardWrite",
+        "contextMenus",
+        "idle",
+        "offscreen",
+        "scripting",
+        "sidePanel",
+        "storage",
+        "tabs",
+        "unlimitedStorage",
+        "webNavigation",
+        "webRequest",
+        "webRequestAuthProvider",
+        "notifications"
+      ],
+      "optionalPermissions": [
+        "nativeMessaging",
+        "privacy"
+      ],
+      "hostPermissions": 2,
+      "contentScripts": 2,
+      "popup": "popup/index.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "sidePanel",
+        "webRequestAuthProvider"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 191,
+      "pageElements": 164,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "1Password",
+      "id": "aeblfdkhhhdcdjpifhhbdiojplfjncoa",
+      "installed": true,
+      "version": "8.12.46.29",
+      "manifestVersion": 3,
+      "permissions": [
+        "alarms",
+        "contextMenus",
+        "downloads",
+        "idle",
+        "management",
+        "nativeMessaging",
+        "notifications",
+        "privacy",
+        "scripting",
+        "storage",
+        "tabs",
+        "webNavigation",
+        "webRequest",
+        "webRequestAuthProvider",
+        "declarativeNetRequestWithHostAccess"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 1,
+      "contentScripts": 6,
+      "popup": "popup/index.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "webRequestAuthProvider"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 0,
+      "pageElements": 26,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Google Translate",
+      "id": "aapbdbdomjkkjkaonfhkkikfgjllcleb",
+      "installed": true,
+      "version": "2.0.18",
+      "manifestVersion": 3,
+      "permissions": [
+        "activeTab",
+        "contextMenus",
+        "storage",
+        "offscreen",
+        "scripting"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 0,
+      "contentScripts": 1,
+      "popup": "popup.html",
+      "options": "options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": false,
+      "missingPermissionApis": [],
+      "missingCommonApis": [],
+      "pageTextLength": 112,
+      "pageElements": 15,
+      "pageConsoleErrors": [
+        "Uncaught (in promise) Error: Cannot access contents of the page. Extension manifest must request permission to access the respective host.",
+        "Uncaught (in promise) Error: Cannot access contents of the page. Extension manifest must request permission to access the respective host."
+      ],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Grammarly",
+      "id": "kbfnbcaeplbcioakkpcpgfkobkghlhen",
+      "installed": true,
+      "version": "14.1349.0",
+      "manifestVersion": 3,
+      "permissions": [
+        "scripting",
+        "sidePanel",
+        "offscreen",
+        "tabs",
+        "notifications",
+        "cookies",
+        "identity",
+        "storage"
+      ],
+      "optionalPermissions": [
+        "nativeMessaging",
+        "clipboardRead"
+      ],
+      "hostPermissions": 2,
+      "contentScripts": 11,
+      "popup": "src/popup.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "sidePanel",
+        "identity"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 290,
+      "pageElements": 52,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "React Developer Tools",
+      "id": "fmkadmapgofadopljbjfkapdkoienihi",
+      "installed": true,
+      "version": "8.0.0",
+      "manifestVersion": 3,
+      "permissions": [
+        "scripting",
+        "storage",
+        "tabs"
+      ],
+      "optionalPermissions": [
+        "clipboardWrite"
+      ],
+      "hostPermissions": 1,
+      "contentScripts": 1,
+      "popup": "popups/disabled.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [],
+      "missingCommonApis": [],
+      "pageTextLength": 105,
+      "pageElements": 4,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Tampermonkey",
+      "id": "dhdgffkkebhmkfjojejmpbldmpobfkfo",
+      "installed": true,
+      "version": "5.5.1",
+      "manifestVersion": 3,
+      "permissions": [
+        "notifications",
+        "unlimitedStorage",
+        "tabs",
+        "idle",
+        "webNavigation",
+        "webRequest",
+        "webRequestBlocking",
+        "storage",
+        "contextMenus",
+        "chrome://favicon/",
+        "clipboardWrite",
+        "cookies",
+        "alarms",
+        "declarativeNetRequestWithHostAccess",
+        "scripting",
+        "userScripts",
+        "offscreen"
+      ],
+      "optionalPermissions": [
+        "downloads"
+      ],
+      "hostPermissions": 1,
+      "contentScripts": 0,
+      "popup": "action.html",
+      "options": "options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "userScripts"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 463,
+      "pageElements": 109,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Video Speed Controller",
+      "id": "nffaoalbilbmmfgbnbgppjihopabppdk",
+      "installed": true,
+      "version": "0.11.2",
+      "manifestVersion": 3,
+      "permissions": [
+        "storage"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 0,
+      "contentScripts": 2,
+      "popup": "ui/popup/popup.html",
+      "options": "ui/options/options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": false,
+      "missingPermissionApis": [],
+      "missingCommonApis": [],
+      "pageTextLength": 42,
+      "pageElements": 29,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "JSON Formatter",
+      "id": "bcjindcccaagfpapjjmafapmmgkkhgoa",
+      "installed": true,
+      "version": "0.10.2",
+      "manifestVersion": 3,
+      "permissions": [
+        "storage"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 2,
+      "contentScripts": 2,
+      "options": "options/options.html",
+      "backgroundType": "none",
+      "serviceWorkerRunning": null,
+      "missingPermissionApis": [],
+      "missingCommonApis": [
+        "chrome.action"
+      ],
+      "pageTextLength": 70,
+      "pageElements": 12,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Return YouTube Dislike",
+      "id": "gebbhagfogifgggkldgodflihgfeippi",
+      "installed": true,
+      "version": "4.1.7",
+      "manifestVersion": 3,
+      "permissions": [
+        "storage"
+      ],
+      "optionalPermissions": [
+        "identity"
+      ],
+      "hostPermissions": 1,
+      "contentScripts": 1,
+      "popup": "popup.html",
+      "options": "popup.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": false,
+      "missingPermissionApis": [
+        "identity"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 1045,
+      "pageElements": 171,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "OneTab",
+      "id": "chphlpgkkbolifaimnlloiipkdnihall",
+      "installed": true,
+      "version": "2.24",
+      "manifestVersion": 3,
+      "permissions": [
+        "favicon",
+        "unlimitedStorage",
+        "storage",
+        "tabs",
+        "activeTab",
+        "scripting",
+        "contextMenus"
+      ],
+      "optionalPermissions": [
+        "readingList",
+        "tabGroups",
+        "bookmarks"
+      ],
+      "hostPermissions": 0,
+      "contentScripts": 0,
+      "popup": "popup.html",
+      "options": "options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [
+        "readingList",
+        "tabGroups",
+        "bookmarks"
+      ],
+      "missingCommonApis": [],
+      "pageTextLength": 215,
+      "pageElements": 18,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Wappalyzer",
+      "id": "gppongmhjkpfnbhagpmjfkannfbllamg",
+      "installed": true,
+      "version": "6.12.8",
+      "manifestVersion": 3,
+      "permissions": [
+        "cookies",
+        "storage",
+        "tabs",
+        "webRequest"
+      ],
+      "optionalPermissions": [
+        "downloads"
+      ],
+      "hostPermissions": 2,
+      "contentScripts": 1,
+      "popup": "html/popup.html",
+      "options": "html/options.html",
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": [],
+      "missingCommonApis": [],
+      "pageTextLength": 277,
+      "pageElements": 130,
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    },
+    {
+      "name": "Google Docs Offline",
+      "id": "ghbmnnjooekpmoecnnnilnnbdlolhkhi",
+      "installed": true,
+      "version": "1.112.1",
+      "manifestVersion": 3,
+      "permissions": [
+        "alarms",
+        "storage",
+        "unlimitedStorage",
+        "offscreen"
+      ],
+      "optionalPermissions": [],
+      "hostPermissions": 2,
+      "contentScripts": 0,
+      "backgroundType": "service_worker",
+      "serviceWorkerRunning": true,
+      "missingPermissionApis": "sin página para sondear",
+      "pageConsoleErrors": [],
+      "serviceWorkerErrors": []
+    }
+  ],
+  "functional": {
+    "adblockOnHttps": "pagead2.googlesyndication.com:BLOQUEADO | www.google-analytics.com:BLOQUEADO | googleads.g.doubleclick.net:BLOQUEADO | connect.facebook.net:BLOQUEADO",
+    "adblockControlNoExtensions": "pagead2.googlesyndication.com:cargado | www.google-analytics.com:cargado | googleads.g.doubleclick.net:cargado | connect.facebook.net:cargado",
+    "adblockIsolated": {
+      "uBlock Origin Lite": "pagead2.googlesyndication.com:sustituto | www.google-analytics.com:sustituto | googleads.g.doubleclick.net:sustituto | connect.facebook.net:BLOQUEADO",
+      "AdGuard AdBlocker": "pagead2.googlesyndication.com:BLOQUEADO | www.google-analytics.com:cargado | googleads.g.doubleclick.net:BLOQUEADO | connect.facebook.net:cargado",
+      "Privacy Badger": "pagead2.googlesyndication.com:BLOQUEADO | www.google-analytics.com:BLOQUEADO | googleads.g.doubleclick.net:BLOQUEADO | connect.facebook.net:BLOQUEADO"
+    },
+    "darkReaderIsolated": {
+      "htmlBackground": "rgb(34, 34, 34)",
+      "textColor": "rgb(255, 255, 255)"
+    },
+    "darkReader": {
+      "htmlBackground": "rgb(34, 34, 34)",
+      "textColor": "rgb(255, 255, 255)"
+    },
+    "contentScriptMarkers": {
+      "grammarly": true,
+      "bodyAttrs": [
+        "data-new-gr-c-s-check-loaded",
+        "data-gr-ext-installed"
+      ],
+      "htmlAttrs": [
+        "lang"
+      ],
+      "customElements": [
+        "grammarly-desktop-integration"
+      ]
+    },
+    "videoSpeedController": "controlador presente",
+    "jsonFormatter": "formateado (DIV#optionBar,DIV,DIV#jsonFormatterParsed,DIV#jsonFormatterRaw)",
+    "loadErrors": [
+      "https://www.youtube.com/: ERR_ABORTED (-3) loading 'https://www.youtube.com/?themeRefresh=1'"
+    ],
+    "carga https://www.youtube.com/": "YouTube",
+    "carga https://github.com/login": "Sign in to GitHub · GitHub",
+    "carga https://accounts.google.com/": "Acceso: Cuentas de Google"
+  },
+  "unattributedSwErrors": [
+    "Unrecognized Content-Security-Policy directive 'navigate-to'.",
+    "Uncaught (in promise) Error: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Could not establish connection. Receiving end does not exist.",
+    "Unchecked runtime.lastError: Autoupdate is not enabled.",
+    "grm ERROR [extension-api.managed-storage.chrome] ░░ Manage storage timeout to get \"GrammarlyExtensionMode\"",
+    "grm ERROR [extension-api.managed-storage.chrome] ░░ Manage storage timeout to get \"GrammarlyEnrollmentToken\"",
+    "grm ERROR [universal.bg.mise.service] ░░ Failed to get Iterable client access token 401:{\"reason\":\"authentication_error\"}\n",
+    "grm ERROR [universal.bg.sideEffects.iterable] ░░ SideEffect getting Iterable client access token failed: bgFirstStart 401:{\"reason\":\"authentication_error\"}\n",
+    "HTTP error 401: HTTP 401: ",
+    "HTTP error 401: HTTP 401: ",
+    "Unchecked runtime.lastError: The message port closed before a response was received.",
+    "grm ERROR [extension-api.managed-storage.chrome] ░░ Manage storage timeout to get \"GrammarlyEnrollmentToken\"",
+    "grm ERROR [knowledgeHub.bgService] ░░ User institution id is not defined",
+    "Unchecked runtime.lastError: The message port closed before a response was received."
+  ]
+}

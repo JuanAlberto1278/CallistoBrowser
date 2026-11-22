@@ -1,0 +1,99 @@
+{
+  "uBlock Origin Lite": {
+    "name": "uBlock Origin Lite",
+    "loaded": true,
+    "swRunning": false,
+    "dnr": {
+      "enabledRulesets": [],
+      "dynamicRules": 0,
+      "sessionRules": 0
+    },
+    "adProbe": "cargado (NO bloqueado)",
+    "darkReader": {
+      "marker": false,
+      "bg": "rgb(34, 34, 34)"
+    },
+    "swLog": [
+      "[sw 0] starting",
+      "[3] Uncaught TypeError: Cannot read properties of undefined (reading 'onCommand')",
+      "[sw 0] stopping",
+      "[sw 0] stopping"
+    ]
+  },
+  "AdGuard AdBlocker": {
+    "name": "AdGuard AdBlocker",
+    "loaded": true,
+    "swRunning": true,
+    "dnr": {
+      "enabledRulesets": [],
+      "dynamicRules": 0,
+      "sessionRules": 0
+    },
+    "adProbe": "cargado (NO bloqueado)",
+    "darkReader": {
+      "marker": false,
+      "bg": "rgb(34, 34, 34)"
+    },
+    "swLog": [
+      "[sw 0] starting",
+      "[sw 0] running",
+      "[1] 2026-11-21T14:56:32:417: [ext.NetworkSettingsCommon.init]: filters rules base url: https://filters.adtidy.org/extension",
+      "[3] Uncaught (in promise) TypeError: browser_polyfill_default(...).tabs.create is not a function"
+    ]
+  },
+  "Dark Reader": {
+    "name": "Dark Reader",
+    "loaded": true,
+    "swRunning": true,
+    "dnr": "API ausente",
+    "adProbe": "cargado (NO bloqueado)",
+    "darkReader": {
+      "marker": false,
+      "bg": "rgb(34, 34, 34)"
+    },
+    "swLog": [
+      "[sw 0] starting",
+      "[3] Unrecognized Content-Security-Policy directive 'navigate-to'.",
+      "[1]   /''''\\\n (0)==(0)\n/__||||__\\\nWelcome to Dark Reader!",
+      "[sw 0] running",
+      "[1] tabs.query [object Object]",
+      "[1] tabs.query (result) [object Object]",
+      "[1] browserAction.setIcon [object Object]",
+      "[1] browserAction.setIcon (result) undefined",
+      "[1] browserAction.setBadgeText [object Object]",
+      "[1] browserAction.setBadgeText (result) undefined",
+      "[1] commands.getAll ",
+      "[1] extension.isAllowedFileSchemeAccess ",
+      "[2] extension.isAllowedFileSchemeAccess is not yet implemented.",
+      "[1] tabs.query [object Object]",
+      "[1] commands.getAll (result) [object Object],[object Object],[object Object]",
+      "[1] tabs.query (result) [object Object]",
+      "[1] tabs.get 5",
+      "[1] tabs.get (result) [object Object]"
+    ]
+  },
+  "1Password": {
+    "name": "1Password",
+    "loaded": true,
+    "swRunning": false,
+    "dnr": {
+      "enabledRulesets": [],
+      "dynamicRules": 0,
+      "sessionRules": 0
+    },
+    "adProbe": "cargado (NO bloqueado)",
+    "darkReader": {
+      "marker": false,
+      "bg": "rgb(34, 34, 34)"
+    },
+    "swLog": [
+      "[sw 0] starting",
+      "[1] [Polyfills] Logger initialized with session \"69ec6dee-8d66-4754-af6b-340bfcdfe75f\"",
+      "[1] [UnleashFeatureFlags] Initialized feature flags manager.",
+      "[3] Uncaught TypeError: Cannot read properties of undefined (reading 'WINDOW_ID_NONE')",
+      "[1] [Storage] [BackgroundStorage] Using browser.storage.persistent",
+      "[sw 0] stopping",
+      "[sw 0] stopping"
+    ]
+  }
+}

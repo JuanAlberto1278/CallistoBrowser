@@ -1,0 +1,31 @@
+{
+  "publicKeyCredential": "function",
+  "conditionalMediation": true,
+  "platformAuthenticator": true,
+  "clientCapabilities": {
+    "conditionalCreate": true,
+    "conditionalGet": true,
+    "extension:appid": true,
+    "extension:appidExclude": true,
+    "extension:cmtgKey": false,
+    "extension:credBlob": true,
+    "extension:credProps": true,
+    "extension:credentialProtectionPolicy": true,
+    "extension:crossDeviceFallbackUrl": false,
+    "extension:enforceCredentialProtectionPolicy": true,
+    "extension:getCredBlob": true,
+    "extension:hmacCreateSecret": true,
+    "extension:largeBlob": true,
+    "extension:minPinLength": true,
+    "extension:payment": true,
+    "extension:prf": true,
+    "hybridTransport": false,
+    "immediateGet": true,
+    "passkeyPlatformAuthenticator": true,
+    "relatedOrigins": true,
+    "signalAllAcceptedCredentials": true,
+    "signalCurrentUserDetails": true,
+    "signalUnknownCredential": true,
+    "userVerifyingPlatformAuthenticator": true
+  }
+}

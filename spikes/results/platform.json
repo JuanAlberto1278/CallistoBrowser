@@ -1,0 +1,61 @@
+{
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "node": "24.22.3",
+  "checks": [
+    {
+      "name": "node:sqlite disponible",
+      "ok": true,
+      "detail": "sqlite 3.54.1"
+    },
+    {
+      "name": "50.000 inserciones en una transacción",
+      "ok": true,
+      "detail": "53 ms"
+    },
+    {
+      "name": "FTS5 (búsqueda de texto completo) disponible",
+      "ok": true,
+      "detail": "100 resultados en 0 ms"
+    },
+    {
+      "name": "safeStorage.isAsyncEncryptionAvailable/isEncryptionAvailable",
+      "ok": true,
+      "detail": {
+        "asyncApi": true,
+        "available": true
+      }
+    },
+    {
+      "name": "clave de perfil envuelta/desenvuelta con DPAPI",
+      "ok": true,
+      "detail": {
+        "wrappedBytes": 75
+      }
+    },
+    {
+      "name": "AES-256-GCM ida y vuelta",
+      "ok": true
+    },
+    {
+      "name": "AES-GCM rechaza credencial usada con otro origen",
+      "ok": true
+    },
+    {
+      "name": "user-agent por defecto",
+      "ok": true,
+      "detail": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+        "jsBrands": "Not:A-Brand 8, Chromium 156"
+      }
+    },
+    {
+      "name": "user-agent limpio",
+      "ok": true,
+      "detail": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.100 Safari/537.36",
+        "jsBrands": "Not:A-Brand 8, Chromium 156"
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "phase": "read",
+  "electron": "45.4.1",
+  "checks": [
+    {
+      "name": "reinicio: trabajo conserva cookie persistente",
+      "ok": true,
+      "detail": "persistent_trabajo=1"
+    },
+    {
+      "name": "reinicio: trabajo pierde cookie de sesión (comportamiento estándar)",
+      "ok": true,
+      "detail": "persistent_trabajo=1"
+    },
+    {
+      "name": "reinicio: trabajo conserva localStorage/IndexedDB/Cache",
+      "ok": true,
+      "detail": {
+        "cookies": "persistent_trabajo=1",
+        "localStorage": "trabajo",
+        "idb": "trabajo",
+        "cache": "trabajo"
+      }
+    },
+    {
+      "name": "reinicio: universidad conserva cookie persistente",
+      "ok": true,
+      "detail": "persistent_universidad=1"
+    },
+    {
+      "name": "reinicio: universidad pierde cookie de sesión (comportamiento estándar)",
+      "ok": true,
+      "detail": "persistent_universidad=1"
+    },
+    {
+      "name": "reinicio: universidad conserva localStorage/IndexedDB/Cache",
+      "ok": true,
+      "detail": {
+        "cookies": "persistent_universidad=1",
+        "localStorage": "universidad",
+        "idb": "universidad",
+        "cache": "universidad"
+      }
+    },
+    {
+      "name": "reinicio: la sesión privada no dejó nada",
+      "ok": true,
+      "detail": {
+        "cookies": "",
+        "localStorage": null,
+        "idb": null,
+        "cache": null
+      }
+    },
+    {
+      "name": "Partitions en disco solo contiene los perfiles",
+      "ok": true,
+      "detail": [
+        "profile-trabajo",
+        "profile-universidad"
+      ]
+    }
+  ]
+}

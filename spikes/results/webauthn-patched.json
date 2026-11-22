@@ -1,0 +1,36 @@
+{
+  "publicKeyCredential": "function",
+  "conditionalMediation": false,
+  "platformAuthenticator": true,
+  "clientCapabilities": {
+    "conditionalCreate": false,
+    "conditionalGet": false,
+    "extension:appid": true,
+    "extension:appidExclude": true,
+    "extension:cmtgKey": false,
+    "extension:credBlob": true,
+    "extension:credProps": true,
+    "extension:credentialProtectionPolicy": true,
+    "extension:crossDeviceFallbackUrl": false,
+    "extension:enforceCredentialProtectionPolicy": true,
+    "extension:getCredBlob": true,
+    "extension:hmacCreateSecret": true,
+    "extension:largeBlob": true,
+    "extension:minPinLength": true,
+    "extension:payment": true,
+    "extension:prf": true,
+    "hybridTransport": false,
+    "immediateGet": false,
+    "passkeyPlatformAuthenticator": true,
+    "relatedOrigins": true,
+    "signalAllAcceptedCredentials": true,
+    "signalCurrentUserDetails": true,
+    "signalUnknownCredential": true,
+    "userVerifyingPlatformAuthenticator": true
+  },
+  "conditionalGetBehavior": {
+    "state": "pendiente tras 1,5 s",
+    "afterAbort": "rechazada AbortError",
+    "immediate": "rechazada NotAllowedError"
+  }
+}

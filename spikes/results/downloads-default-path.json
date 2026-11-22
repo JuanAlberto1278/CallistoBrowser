@@ -1,0 +1,320 @@
+{
+  "electron": "45.4.1",
+  "chrome": "156.0.8078.100",
+  "date": "2026-11-21T20:41:55.948Z",
+  "results": [
+    {
+      "trial": "link-attachment/A-reject",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 524288,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\7d86268d-8f4c-4fe3-8eb0-e98a92c11aa0.tmp",
+          "bytes": 524288
+        }
+      ],
+      "bytesOnDiskAtDecision": 1048576,
+      "filesAtDecision": [
+        {
+          "file": "quarantine\\5e30a2db-6486-4cb4-a5dd-624de2a1a6e9.part",
+          "bytes": 1048576
+        }
+      ],
+      "receivedAtDecision": [
+        1048576
+      ],
+      "pausedOk": [
+        true
+      ],
+      "leftoversAfterCancel": [
+        {
+          "file": "quarantine\\5e30a2db-6486-4cb4-a5dd-624de2a1a6e9.part",
+          "bytes": 1048576
+        }
+      ],
+      "quarantineAtEnd": []
+    },
+    {
+      "trial": "link-attachment/A-approve",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [],
+      "bytesOnDiskAtDecision": 1048576,
+      "filesAtDecision": [
+        {
+          "file": "quarantine\\d3703505-76ea-47c2-9a6c-21dd59ae652e.part",
+          "bytes": 1048576
+        }
+      ],
+      "receivedAtDecision": [
+        1048576
+      ],
+      "pausedOk": [
+        true
+      ],
+      "quarantineAtEnd": [],
+      "final": [
+        {
+          "state": "completed",
+          "bytes": 1048576,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "trial": "link-attachment/B",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\5a4801d4-9afb-4008-805c-f806f1ed5597.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 0,
+      "filesAtDecision": [],
+      "receivedAtDecision": [
+        null
+      ],
+      "pausedOk": [
+        null
+      ],
+      "filesAfterImmediateCancel": [],
+      "quarantineAtEnd": [],
+      "redownload": [
+        {
+          "state": "completed",
+          "bytes": 1048576,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "trial": "blob-url/A-reject",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\c208089f-2ed9-4079-84ea-52d832ecd5a6.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 1048576,
+      "filesAtDecision": [
+        {
+          "file": "quarantine\\a0cb9328-c87a-43ab-a5fe-2c02f79dda55.part",
+          "bytes": 1048576
+        }
+      ],
+      "receivedAtDecision": [
+        1048576
+      ],
+      "pausedOk": [
+        true
+      ],
+      "leftoversAfterCancel": [
+        {
+          "file": "quarantine\\a0cb9328-c87a-43ab-a5fe-2c02f79dda55.part",
+          "bytes": 1048576
+        }
+      ],
+      "quarantineAtEnd": []
+    },
+    {
+      "trial": "blob-url/A-approve",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\489715d7-1ee3-4778-a670-8f2ebacfb0ad.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 1048576,
+      "filesAtDecision": [
+        {
+          "file": "quarantine\\4916bb0f-67a3-4475-a628-ee619b64cd7c.part",
+          "bytes": 1048576
+        }
+      ],
+      "receivedAtDecision": [
+        1048576
+      ],
+      "pausedOk": [
+        true
+      ],
+      "quarantineAtEnd": [],
+      "final": [
+        {
+          "state": "completed",
+          "bytes": 1048576,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "trial": "blob-url/B",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\1d3ea66c-8f8c-4183-b3c4-eb7452f48bb0.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 0,
+      "filesAtDecision": [],
+      "receivedAtDecision": [
+        null
+      ],
+      "pausedOk": [
+        null
+      ],
+      "filesAfterImmediateCancel": [],
+      "quarantineAtEnd": [],
+      "redownload": [
+        {
+          "state": "completed",
+          "bytes": 1048576,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "trial": "data-url/A-reject",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\1e8233c3-160c-4cf0-976c-a03043960b0d.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 13,
+      "filesAtDecision": [
+        {
+          "file": "quarantine\\4893d649-59cd-4177-92a7-60878561d754.part",
+          "bytes": 13
+        }
+      ],
+      "receivedAtDecision": [
+        13
+      ],
+      "pausedOk": [
+        true
+      ],
+      "leftoversAfterCancel": [
+        {
+          "file": "quarantine\\4893d649-59cd-4177-92a7-60878561d754.part",
+          "bytes": 13
+        }
+      ],
+      "quarantineAtEnd": []
+    },
+    {
+      "trial": "data-url/A-approve",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\4f156635-311d-4952-b6d5-c0c62b08c01e.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 13,
+      "filesAtDecision": [
+        {
+          "file": "quarantine\\81951c05-1544-4d10-b397-05af9de7d467.part",
+          "bytes": 13
+        }
+      ],
+      "receivedAtDecision": [
+        13
+      ],
+      "pausedOk": [
+        true
+      ],
+      "quarantineAtEnd": [],
+      "final": [
+        {
+          "state": "completed",
+          "bytes": 13,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "trial": "data-url/B",
+      "events": 1,
+      "mime": "application/octet-stream",
+      "userGesture": true,
+      "receivedAtEvent": [
+        0
+      ],
+      "bytesOnDiskAtEvent": 0,
+      "filesAtEvent": [
+        {
+          "file": "fake-user-downloads\\b4716825-642b-422f-89b7-b2ab426bd724.tmp",
+          "bytes": 0
+        }
+      ],
+      "bytesOnDiskAtDecision": 0,
+      "filesAtDecision": [],
+      "receivedAtDecision": [
+        null
+      ],
+      "pausedOk": [
+        null
+      ],
+      "filesAfterImmediateCancel": [],
+      "quarantineAtEnd": [],
+      "redownload": [
+        {
+          "state": "completed",
+          "bytes": 13,
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

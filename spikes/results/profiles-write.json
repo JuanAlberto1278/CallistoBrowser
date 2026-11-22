@@ -1,0 +1,123 @@
+{
+  "phase": "write",
+  "electron": "45.4.1",
+  "checks": [
+    {
+      "name": "aislamiento: trabajo solo ve sus datos",
+      "ok": true,
+      "detail": {
+        "cookies": "persistent_trabajo=1; session_trabajo=1",
+        "localStorage": "trabajo",
+        "idb": "trabajo",
+        "cache": "trabajo"
+      }
+    },
+    {
+      "name": "aislamiento: universidad solo ve sus datos",
+      "ok": true,
+      "detail": {
+        "cookies": "persistent_universidad=1; session_universidad=1",
+        "localStorage": "universidad",
+        "idb": "universidad",
+        "cache": "universidad"
+      }
+    },
+    {
+      "name": "aislamiento: privado solo ve sus datos",
+      "ok": true,
+      "detail": {
+        "cookies": "persistent_privado=1; session_privado=1",
+        "localStorage": "privado",
+        "idb": "privado",
+        "cache": "privado"
+      }
+    },
+    {
+      "name": "cookie jar trabajo sin cookies de universidad",
+      "ok": true,
+      "detail": [
+        "persistent_trabajo",
+        "session_trabajo"
+      ]
+    },
+    {
+      "name": "cookie jar universidad sin cookies de trabajo",
+      "ok": true,
+      "detail": [
+        "persistent_universidad",
+        "session_universidad"
+      ]
+    },
+    {
+      "name": "privado: no crea carpeta de partición en disco",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "privado: archivos nuevos en userData durante navegación privada",
+      "ok": true,
+      "detail": [
+        "Code Cache\\js\\index",
+        "Code Cache\\js\\index-dir\\the-real-index",
+        "Code Cache\\wasm\\index",
+        "Code Cache\\wasm\\index-dir\\the-real-index",
+        "declarative_performance_observer.db",
+        "declarative_performance_observer.db-journal",
+        "Extension State\\000003.log",
+        "Extension State\\CURRENT",
+        "Extension State\\LOCK",
+        "Extension State\\LOG",
+        "Extension State\\MANIFEST-000001",
+        "GrShaderCache\\data_0",
+        "GrShaderCache\\data_1",
+        "GrShaderCache\\data_2",
+        "GrShaderCache\\data_3",
+        "GrShaderCache\\f_000001",
+        "GrShaderCache\\f_000002",
+        "GrShaderCache\\index",
+        "Local Storage\\leveldb\\000003.log",
+        "Local Storage\\leveldb\\CURRENT",
+        "Local Storage\\leveldb\\LOCK",
+        "Local Storage\\leveldb\\LOG",
+        "Local Storage\\leveldb\\MANIFEST-000001",
+        "Network\\NetworkDataMigrated",
+        "Network\\Trust Tokens",
+        "Network\\Trust Tokens-journal",
+        "Shared Dictionary\\cache\\index",
+        "Shared Dictionary\\cache\\index-dir\\the-real-index",
+        "Shared Dictionary\\db",
+        "Shared Dictionary\\db-journal"
+      ]
+    },
+    {
+      "name": "privado: tras clearStorageData no queda nada",
+      "ok": true,
+      "detail": {
+        "cookies": "",
+        "localStorage": null,
+        "idb": null,
+        "cache": null
+      }
+    },
+    {
+      "name": "privado: nueva sesión privada empieza vacía",
+      "ok": true,
+      "detail": {
+        "cookies": "",
+        "localStorage": null,
+        "idb": null,
+        "cache": null
+      }
+    },
+    {
+      "name": "privado: cargar extensiones en sesión en memoria falla (esperado)",
+      "ok": true,
+      "detail": "Extensions cannot be loaded in a temporary session"
+    },
+    {
+      "name": "perfil persistente: carga de extensión funciona",
+      "ok": true,
+      "detail": "lgeolejjfmhkkjlebpdakmjdamgfpmbp"
+    }
+  ]
+}
