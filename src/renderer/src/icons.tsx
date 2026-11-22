@@ -28,3 +28,18 @@ export const SearchIcon = () => (
 export const CloseIcon = () => (
   <svg {...base} width={12} height={12}><path d="M3 3l6 6M9 3l-6 6" /></svg>
 );
+export const PlusIcon = () => (
+  <svg {...base}><path d="M8 3v10M3 8h10" /></svg>
+);
+export const GlobeIcon = () => (
+  <svg {...base}><circle cx="8" cy="8" r="5.5" /><path d="M2.5 8h11M8 2.5c1.6 1.7 2.4 3.5 2.4 5.5S9.6 11.8 8 13.5C6.4 11.8 5.6 10 5.6 8S6.4 4.2 8 2.5Z" /></svg>
+);
+export const ChevronUpIcon = () => (
+  <svg {...base} width={14} height={14}><path d="m4 10 4-4 4 4" /></svg>
+);
+export const ChevronDownIcon = () => (
+  <svg {...base} width={14} height={14}><path d="m4 6 4 4 4-4" /></svg>
+);
+export const ZoomIcon = () => (
+  <svg {...base} width={14} height={14}><circle cx="7" cy="7" r="4" /><path d="m10 10 3.5 3.5M5.3 7h3.4M7 5.3v3.4" /></svg>
+);

@@ -64,9 +64,33 @@ describe('matchShortcut', () => {
     [key('F5', { control: true }), 'reload-ignore-cache'],
     [key('R', { control: true, shift: true }), 'reload-ignore-cache'],
     [key('F12'), 'devtools'],
-    [key('w', { control: true }), 'close-window'],
+    [key('w', { control: true }), 'close-tab'],
+    [key('F4', { control: true }), 'close-tab'],
+    [key('W', { control: true, shift: true }), 'close-window'],
+    [key('t', { control: true }), 'new-tab'],
+    [key('T', { control: true, shift: true }), 'reopen-closed-tab'],
+    [key('n', { control: true }), 'new-window'],
+    [key('K', { control: true, shift: true }), 'duplicate-tab'],
+    [key('Tab', { control: true }), 'next-tab'],
+    [key('Tab', { control: true, shift: true }), 'prev-tab'],
+    [key('PageDown', { control: true }), 'next-tab'],
+    [key('PageUp', { control: true }), 'prev-tab'],
+    [key('1', { control: true, code: 'Digit1' }), 'select-tab-1'],
+    [key('8', { control: true, code: 'Numpad8' }), 'select-tab-8'],
+    [key('9', { control: true, code: 'Digit9' }), 'select-last-tab'],
+    [key('&', { control: true, code: 'Digit1' }), 'select-tab-1'], // AZERTY: el dígito requiere Shift, vale la tecla física
+    [key('f', { control: true }), 'find'],
+    [key('F3'), 'find-next'],
+    [key('F3', { shift: true }), 'find-prev'],
+    [key('g', { control: true }), 'find-next'],
+    [key('+', { control: true }), 'zoom-in'],
+    [key('=', { control: true }), 'zoom-in'],
+    [key('+', { control: true, code: 'NumpadAdd' }), 'zoom-in'],
+    [key('-', { control: true }), 'zoom-out'],
+    [key('0', { control: true, code: 'Digit0' }), 'zoom-reset'],
     [key('a'), null],
     [key('ArrowLeft'), null],
+    [key('t'), null],
   ])('%o', (input, expected) => {
     expect(matchShortcut(input, page)).toBe(expected);
   });
@@ -75,6 +99,13 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key('Escape'), { fromPage: true, isLoading: true })).toBe('stop');
     expect(matchShortcut(key('Escape'), { fromPage: true, isLoading: false })).toBeNull();
     expect(matchShortcut(key('Escape'), { fromPage: false, isLoading: true })).toBeNull();
+  });
+
+  it('AltGr (Ctrl+Alt) nunca dispara atajos de Ctrl: en teclados en español escribe caracteres', () => {
+    expect(matchShortcut(key('@', { control: true, alt: true, code: 'Digit2' }), page)).toBeNull();
+    expect(matchShortcut(key('#', { control: true, alt: true, code: 'Digit3' }), page)).toBeNull();
+    expect(matchShortcut(key('€', { control: true, alt: true, code: 'KeyE' }), page)).toBeNull();
+    expect(matchShortcut(key('w', { control: true, alt: true }), page)).toBeNull();
   });
 
   it('ignora keyUp', () => {

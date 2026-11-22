@@ -4,6 +4,8 @@ import { configureUserData, prepareQuarantine } from './paths';
 import { registerInternalScheme, serveInternalUi, UI_ORIGIN } from './internal-protocol';
 import { Profile } from './profile';
 import { BrowserWindowController, type WindowContext } from './window';
+import { Tab } from './tab';
+import { ClosedTabs } from './closed-tabs';
 import { registerIpc } from './ipc';
 import { buildUserAgent } from '../shared/user-agent';
 
@@ -56,20 +58,26 @@ if (!app.requestSingleInstanceLock()) {
       webContentPreload: join(__dirname, '../preload/web-content.js'),
     });
     profile.on('download-blocked', (info, wc) => {
-      BrowserWindowController.fromTabContents(wc)?.showNotice(
+      Tab.fromWebContents(wc)?.showNotice(
         'warning',
         `Callisto bloqueó la descarga de «${info.filename}». Las descargas todavía no están disponibles en esta versión; no se guardó nada.`,
       );
     });
 
-    const ctx: WindowContext = { profile, uiSession, uiUrl, uiPreload: join(__dirname, '../preload/ui.js') };
+    const ctx: WindowContext = { profile, uiSession, uiUrl, uiPreload: join(__dirname, '../preload/ui.js'), closedTabs: new ClosedTabs() };
     new BrowserWindowController(ctx, { url: urlFromArgv(process.argv) });
 
+    // Abrir Callisto otra vez: la URL recibida va a una pestaña nueva de la ventana actual (como Chrome);
+    // sin URL, se enfoca la ventana.
     app.on('second-instance', (_e, argv) => {
       const url = urlFromArgv(argv);
-      const first = BrowserWindowController.all.values().next().value;
-      if (url || !first) new BrowserWindowController(ctx, { url });
-      else first.focus();
+      const current = BrowserWindowController.current();
+      if (!current) {
+        new BrowserWindowController(ctx, { url });
+        return;
+      }
+      if (url) current.newTab({ url });
+      current.focus();
     });
   });
 }

@@ -8,25 +8,74 @@ export type ShortcutAction =
   | 'reload-ignore-cache'
   | 'stop'
   | 'devtools'
-  | 'close-window';
+  | 'new-tab'
+  | 'close-tab'
+  | 'new-window'
+  | 'close-window'
+  | 'next-tab'
+  | 'prev-tab'
+  | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`
+  | 'select-last-tab'
+  | 'reopen-closed-tab'
+  | 'duplicate-tab'
+  | 'find'
+  | 'find-next'
+  | 'find-prev'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'zoom-reset';
 
 /**
- * Atajos de teclado del navegador. `fromPage` indica si la tecla se pulsó dentro de la página web
+ * Atajos de teclado del navegador (los de Chrome/Edge). `fromPage` indica si la tecla se pulsó dentro de la página web
  * (Esc solo detiene la carga si viene de la página y hay una carga en curso).
+ *
+ * Los atajos con Ctrl exigen que Alt NO esté pulsado: en teclados como el español, AltGr equivale a Ctrl+Alt y se usa
+ * para escribir caracteres (@, #, €…), que nunca deben disparar un atajo.
  */
 export function matchShortcut(input: Input, ctx: { fromPage: boolean; isLoading: boolean }): ShortcutAction | null {
   if (input.type !== 'keyDown') return null;
-  const ctrl = input.control || input.meta;
+  const ctrl = (input.control || input.meta) && !input.alt;
+  const shift = input.shift;
   const key = input.key;
   const k = key.length === 1 ? key.toLowerCase() : key;
+  const code = input.code ?? '';
 
-  if ((ctrl && !input.shift && k === 'l') || (input.alt && !ctrl && k === 'd') || (k === 'F6' && !ctrl && !input.alt)) return 'focus-address-bar';
-  if ((input.alt && k === 'ArrowLeft') || k === 'BrowserBack') return 'back';
-  if ((input.alt && k === 'ArrowRight') || k === 'BrowserForward') return 'forward';
-  if ((ctrl && k === 'F5') || (input.shift && k === 'F5') || (ctrl && input.shift && k === 'r')) return 'reload-ignore-cache';
-  if (k === 'F5' || (ctrl && !input.shift && k === 'r') || k === 'BrowserRefresh') return 'reload';
+  // Barra de direcciones
+  if ((ctrl && !shift && k === 'l') || (input.alt && !input.control && k === 'd') || (k === 'F6' && !input.control && !input.alt)) return 'focus-address-bar';
+
+  // Navegación
+  if ((input.alt && !input.control && k === 'ArrowLeft') || k === 'BrowserBack') return 'back';
+  if ((input.alt && !input.control && k === 'ArrowRight') || k === 'BrowserForward') return 'forward';
+  if ((ctrl && k === 'F5') || (shift && !input.control && k === 'F5') || (ctrl && shift && k === 'r')) return 'reload-ignore-cache';
+  if ((k === 'F5' && !input.control) || (ctrl && !shift && k === 'r') || k === 'BrowserRefresh') return 'reload';
   if (k === 'Escape' && ctx.fromPage && ctx.isLoading) return 'stop';
-  if (k === 'F12' || (ctrl && input.shift && k === 'i')) return 'devtools';
-  if (ctrl && (k === 'w' || k === 'F4')) return 'close-window';
+  if (k === 'F12' || (ctrl && shift && k === 'i')) return 'devtools';
+
+  // Pestañas y ventanas
+  if (ctrl && shift && k === 't') return 'reopen-closed-tab';
+  if (ctrl && !shift && k === 't') return 'new-tab';
+  if (ctrl && shift && k === 'w') return 'close-window';
+  if (ctrl && !shift && (k === 'w' || k === 'F4')) return 'close-tab';
+  if (ctrl && !shift && k === 'n') return 'new-window';
+  if (ctrl && shift && k === 'k') return 'duplicate-tab';
+  if ((ctrl && !shift && k === 'Tab') || (ctrl && !shift && k === 'PageDown')) return 'next-tab';
+  if ((ctrl && shift && k === 'Tab') || (ctrl && !shift && k === 'PageUp')) return 'prev-tab';
+  if (ctrl && !shift) {
+    // Por código físico, para que funcione igual en distribuciones de teclado donde los dígitos requieren Shift
+    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(code)?.[1] ?? (/^[1-9]$/.test(k) ? k : undefined);
+    if (digit === '9') return 'select-last-tab';
+    if (digit) return `select-tab-${Number(digit) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`;
+  }
+
+  // Buscar en la página
+  if (ctrl && !shift && k === 'f') return 'find';
+  if ((k === 'F3' && !shift && !input.control && !input.alt) || (ctrl && !shift && k === 'g')) return 'find-next';
+  if ((k === 'F3' && shift && !input.control && !input.alt) || (ctrl && shift && k === 'g')) return 'find-prev';
+
+  // Zoom (Ctrl + / Ctrl = / Ctrl - / Ctrl 0, incluidas las del teclado numérico)
+  if (ctrl && (k === '+' || k === '=' || code === 'NumpadAdd')) return 'zoom-in';
+  if (ctrl && !shift && (k === '-' || code === 'NumpadSubtract')) return 'zoom-out';
+  if (ctrl && !shift && (k === '0' || code === 'Digit0' || code === 'Numpad0')) return 'zoom-reset';
+
   return null;
 }

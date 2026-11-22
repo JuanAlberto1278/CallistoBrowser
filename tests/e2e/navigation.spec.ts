@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { closedPort, expectEventually, launchCallisto, online, pressKey, startServer, typeAddress, webPages, windowCount, type Callisto, type TestServer } from './fixtures';
+import { closedPort, expectEventually, launchCallisto, online, pressKey, startServer, typeAddress, type Callisto, type TestServer } from './fixtures';
 
 let server: TestServer;
 let c: Callisto;
@@ -112,20 +112,6 @@ test('Ctrl+L, Alt+D y F6 enfocan la barra de direcciones desde la página', asyn
   }
 });
 
-test('target=_blank abre una ventana nueva; window.open conserva window.opener', async () => {
-  await typeAddress(c.ui, `${server.base}/page1`);
-  await expect(c.tab).toHaveTitle('Página 1');
-  await c.tab.click('#blank');
-  await expectEventually(async () => (await windowCount(c.app)) === 2);
-  await expectEventually(() => webPages(c.app, (u) => u.endsWith('/page2')).length === 1);
-
-  await c.tab.click('#popup');
-  await expectEventually(async () => (await windowCount(c.app)) === 3);
-  await expectEventually(() => webPages(c.app, (u) => u.endsWith('/page2')).length === 2);
-  const openers = await Promise.all(webPages(c.app, (u) => u.endsWith('/page2')).map((p) => p.evaluate(() => window.opener !== null)));
-  expect(openers).toContain(true); // el popup de window.open conserva la relación con su página de origen
-});
-
 test('las descargas se bloquean, se avisa y no se guarda nada', async () => {
   await typeAddress(c.ui, `${server.base}/page1`);
   await expect(c.tab).toHaveTitle('Página 1');
@@ -167,11 +153,11 @@ test('corrección de passkeys: no se anuncia autocompletado', async () => {
 
 test('las páginas web no pueden llegar a la interfaz ni a su API', async () => {
   expect(await c.tab.evaluate(() => typeof (window as unknown as { callisto?: unknown }).callisto)).toBe('undefined');
+  const r = await c.tab.evaluate(() => fetch('callisto://ui/index.html').then(() => 'accesible', () => 'bloqueado'));
+  expect(r).toBe('bloqueado');
   await typeAddress(c.ui, 'callisto://ui/index.html');
   // No es un esquema navegable: se trata como búsqueda, nunca carga la interfaz dentro de la pestaña
   await expect(c.ui.getByTestId('address')).toHaveValue(/google\.com\/search/);
-  const r = await c.tab.evaluate(() => fetch('callisto://ui/index.html').then(() => 'accesible', () => 'bloqueado'));
-  expect(r).toBe('bloqueado');
 });
 
 test('HTTPS real muestra conexión segura', async () => {

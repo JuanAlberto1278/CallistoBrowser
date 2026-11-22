@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { SecurityLevel } from '../../shared/url-security';
 import { displayUrl } from '../../shared/omnibox';
-import { FileIcon, LockIcon, SearchIcon, WarningIcon } from './icons';
+import { FileIcon, LockIcon, SearchIcon, WarningIcon, ZoomIcon } from './icons';
 
 const SECURITY: Record<SecurityLevel, { label: string; title: string; icon: () => React.JSX.Element; className: string }> = {
   none: { label: '', title: 'Escribí una dirección o una búsqueda', icon: SearchIcon, className: 'none' },
@@ -12,13 +12,17 @@ const SECURITY: Record<SecurityLevel, { label: string; title: string; icon: () =
 };
 
 interface Props {
+  /** Pestaña activa: al cambiar, se descarta lo que se estaba escribiendo. */
+  tabId: number;
   url: string;
   security: SecurityLevel;
+  zoomPercent: number;
   focusSignal: number;
   onSubmit: (text: string) => void;
+  onResetZoom: () => void;
 }
 
-export function AddressBar({ url, security, focusSignal, onSubmit }: Props) {
+export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, onSubmit, onResetZoom }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(displayUrl(url));
@@ -27,6 +31,12 @@ export function AddressBar({ url, security, focusSignal, onSubmit }: Props) {
   useEffect(() => {
     if (!editing) setText(displayUrl(url));
   }, [url, editing]);
+
+  // Otra pestaña: se muestra su dirección (lo escrito a medias en la anterior se descarta, sin perder el foco).
+  useEffect(() => {
+    setEditing(false);
+    setText(displayUrl(url));
+  }, [tabId]); // solo al cambiar de pestaña
 
   useEffect(() => {
     if (focusSignal === 0) return;
@@ -64,6 +74,7 @@ export function AddressBar({ url, security, focusSignal, onSubmit }: Props) {
       </span>
       <input
         ref={input}
+        type="text"
         data-testid="address"
         aria-label="Barra de direcciones"
         spellCheck={false}
@@ -81,6 +92,12 @@ export function AddressBar({ url, security, focusSignal, onSubmit }: Props) {
         }}
         onKeyDown={onKeyDown}
       />
+      {zoomPercent !== 100 && (
+        <button className="zoom-badge" data-testid="zoom" title={`Zoom: ${zoomPercent} %. Clic para restablecer (Ctrl+0)`} aria-label={`Zoom ${zoomPercent} %, restablecer`} onClick={onResetZoom}>
+          <ZoomIcon />
+          <span>{zoomPercent} %</span>
+        </button>
+      )}
     </div>
   );
 }

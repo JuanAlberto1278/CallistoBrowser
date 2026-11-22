@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { session, type Session, type WebContents } from 'electron';
+import { FaviconLoader } from './favicon';
 
 /**
  * Permisos que se conceden sin preguntar. Todo lo demás (cámara, micrófono, ubicación, notificaciones, etc.)
@@ -20,15 +21,17 @@ export interface ProfileOptions {
 
 /**
  * Un perfil = un contexto de navegación independiente (cookies, almacenamiento, caché, permisos).
- * V0.2 usa un único perfil "default"; V0.7 agrega la gestión de varios.
+ * Por ahora hay un único perfil "default"; V0.7 agrega la gestión de varios.
  */
 export class Profile extends EventEmitter<{ 'download-blocked': [BlockedDownload, WebContents] }> {
   readonly session: Session;
+  readonly favicons: FaviconLoader;
 
   constructor(readonly id: string, opts: ProfileOptions) {
     super();
     const ses = session.fromPartition(`persist:profile-${id}`);
     this.session = ses;
+    this.favicons = new FaviconLoader(ses);
 
     ses.setUserAgent(opts.userAgent);
     ses.registerPreloadScript({ id: 'callisto-web-content', type: 'frame', filePath: opts.webContentPreload });
@@ -37,7 +40,7 @@ export class Profile extends EventEmitter<{ 'download-blocked': [BlockedDownload
     ses.setPermissionCheckHandler((_wc, permission) => ALWAYS_ALLOWED.has(permission));
     ses.setDevicePermissionHandler(() => false);
 
-    // V0.2: todavía no hay gestor de descargas. Ninguna descarga se guarda: se cancela de inmediato
+    // Todavía no hay gestor de descargas (llega en V0.5). Ninguna descarga se guarda: se cancela de inmediato
     // (misma primera acción que el diseño de V0.5) y se avisa al usuario.
     ses.on('will-download', (event, item, wc) => {
       const info: BlockedDownload = { filename: item.getFilename(), url: item.getURL() };

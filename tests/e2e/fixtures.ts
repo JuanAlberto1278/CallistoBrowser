@@ -13,8 +13,24 @@ export interface TestServer {
   releaseSlow(): void;
 }
 
-const page = (title: string, body = '') =>
-  `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title></head><body><h1>${title}</h1>${body}</body></html>`;
+const page = (title: string, body = '', head = '') =>
+  `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title>${head}</head><body><h1>${title}</h1>${body}</body></html>`;
+
+const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+
+function icoWithPng(): Buffer {
+  const header = Buffer.alloc(22);
+  header.writeUInt16LE(0, 0); // reservado
+  header.writeUInt16LE(1, 2); // tipo: ícono
+  header.writeUInt16LE(1, 4); // una imagen
+  header.writeUInt8(1, 6); // ancho
+  header.writeUInt8(1, 7); // alto
+  header.writeUInt16LE(1, 10); // planos
+  header.writeUInt16LE(32, 12); // bits por píxel
+  header.writeUInt32LE(PNG_1X1.length, 14);
+  header.writeUInt32LE(22, 18); // posición de la imagen
+  return Buffer.concat([header, PNG_1X1]);
+}
 
 export async function startServer(): Promise<TestServer> {
   let count = 0;
@@ -28,9 +44,26 @@ export async function startServer(): Promise<TestServer> {
           <a id="to2" href="/page2">Ir a la página 2</a>
           <a id="blank" href="/page2" target="_blank">Página 2 en ventana nueva</a>
           <a id="download" href="/download">Descargar</a>
-          <button id="popup" onclick="window.open('/page2', 'popup', 'width=500,height=400')">Popup</button>`));
+          <button id="popup" onclick="window.open('/page2', 'popup', 'width=500,height=400')">Popup</button>
+          <button id="opentab" onclick="window.open('/self-close')">Pestaña que se cierra sola</button>
+          <input id="field" value="texto de prueba">`));
       case '/page2':
         return html(page('Página 2'));
+      case '/page3':
+        return html(page('Página 3'));
+      case '/self-close':
+        return html(page('Se cierra sola', '<button id="close" onclick="window.close()">Cerrar</button>'));
+      case '/find':
+        return html(page('Buscar', '<p>Callisto es un navegador.</p><p>Probando callisto.</p><p>CALLISTO al final.</p>'));
+      case '/icon-page':
+        return html(page('Con ícono', '', '<link rel="icon" href="/icon.svg">'));
+      case '/icon.svg':
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+        return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#0067c0"/></svg>');
+      case '/favicon.ico':
+        // ICO con una imagen PNG de 1x1 adentro (el formato que usan la mayoría de los favicons modernos)
+        res.writeHead(200, { 'Content-Type': 'image/x-icon' });
+        return res.end(icoWithPng());
       case '/count':
         count += 1;
         return html(page(`Carga ${count}`));
@@ -115,18 +148,80 @@ export async function launchCallisto(extraArgs: string[] = [], userData?: string
 }
 
 /**
- * Pulsa una tecla en la pestaña o en la interfaz de la primera ventana con `webContents.sendInputEvent`.
- * (Las teclas simuladas por Playwright vía CDP no pasan por 'before-input-event', que es donde Callisto
- * implementa sus atajos; `sendInputEvent` recorre el mismo camino que una tecla real.)
+ * Pulsa una tecla en la pestaña activa o en la interfaz de la ventana enfocada (o la primera) con
+ * `webContents.sendInputEvent`. (Las teclas simuladas por Playwright vía CDP no pasan por 'before-input-event', que es
+ * donde Callisto implementa sus atajos; `sendInputEvent` recorre el mismo camino que una tecla real.)
  */
-export async function pressKey(app: ElectronApplication, target: 'tab' | 'ui', keyCode: string, modifiers: Array<'control' | 'alt' | 'shift'> = []): Promise<void> {
-  await app.evaluate(({ BaseWindow }, { target, keyCode, modifiers }) => {
-    const [tabView, uiView] = BaseWindow.getAllWindows()[0]!.contentView.children as Electron.WebContentsView[];
-    const wc = (target === 'tab' ? tabView : uiView)!.webContents;
+export async function pressKey(app: ElectronApplication, target: 'tab' | 'ui', keyCode: string, modifiers: Array<'control' | 'alt' | 'shift'> = [], which: 'focused' | 'newest' = 'focused'): Promise<void> {
+  await app.evaluate(({ BaseWindow }, { target, keyCode, modifiers, which }) => {
+    const all = BaseWindow.getAllWindows();
+    const newest = all.reduce((a, b) => (b.id > a.id ? b : a));
+    const win = which === 'newest' ? newest : (BaseWindow.getFocusedWindow() ?? all.reduce((a, b) => (b.id < a.id ? b : a)));
+    const views = win.contentView.children as Electron.WebContentsView[];
+    const ui = views.find((v) => v.webContents.getURL().startsWith('callisto://ui/'))!;
+    const tab = views.find((v) => v !== ui && v.getVisible())!;
+    const wc = (target === 'tab' ? tab : ui).webContents;
     wc.focus();
-    wc.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
-    wc.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
-  }, { target, keyCode, modifiers });
+    // Fuera de este evaluate: un atajo como Ctrl+Shift+W cierra la ventana en el acto, y eso corta la respuesta a
+    // Playwright si ocurre durante la llamada. La tecla soltada se omite si el contenido ya no existe.
+    setTimeout(() => {
+      wc.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
+      if (!wc.isDestroyed()) wc.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+    }, 0);
+  }, { target, keyCode, modifiers, which });
+  await new Promise((r) => setTimeout(r, 50));
+}
+
+/** URL de la pestaña activa (visible) de la ventana enfocada o la primera. */
+export function activeTabUrl(app: ElectronApplication): Promise<string> {
+  return app.evaluate(({ BaseWindow }) => {
+    const win = BaseWindow.getFocusedWindow() ?? BaseWindow.getAllWindows()[0]!;
+    const views = win.contentView.children as Electron.WebContentsView[];
+    const tab = views.find((v) => !v.webContents.getURL().startsWith('callisto://ui/') && v.getVisible());
+    return tab ? tab.webContents.getURL() : '';
+  });
+}
+
+/** Zoom real (factor de Chromium) de la pestaña activa. */
+export function activeTabZoom(app: ElectronApplication): Promise<number> {
+  return app.evaluate(({ BaseWindow }) => {
+    const win = BaseWindow.getFocusedWindow() ?? BaseWindow.getAllWindows()[0]!;
+    const views = win.contentView.children as Electron.WebContentsView[];
+    const tab = views.find((v) => !v.webContents.getURL().startsWith('callisto://ui/') && v.getVisible())!;
+    return tab.webContents.getZoomFactor();
+  });
+}
+
+/**
+ * Captura el próximo menú contextual nativo en lugar de mostrarlo, para poder elegir una opción desde la prueba.
+ * (Los menús nativos de Windows no son accesibles para Playwright.)
+ */
+export async function captureMenus(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ Menu }) => {
+    const g = globalThis as unknown as { __menus: Electron.Menu[] };
+    g.__menus = [];
+    Menu.prototype.popup = function (this: Electron.Menu) { g.__menus.push(this); };
+  });
+}
+
+/** Etiquetas (habilitadas) del último menú capturado. */
+export async function lastMenuLabels(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => {
+    const g = globalThis as unknown as { __menus: Electron.Menu[] };
+    const m = g.__menus[g.__menus.length - 1];
+    return m ? m.items.filter((i) => i.type !== 'separator' && i.enabled).map((i) => i.label) : [];
+  });
+}
+
+/** Elige una opción del último menú capturado. */
+export async function clickMenuItem(app: ElectronApplication, label: string): Promise<void> {
+  await expectEventually(async () => (await lastMenuLabels(app)).includes(label));
+  await app.evaluate((_e, label) => {
+    const g = globalThis as unknown as { __menus: Electron.Menu[] };
+    const m = g.__menus[g.__menus.length - 1]!;
+    const item = m.items.find((i) => i.label === label)!;
+    (item.click as unknown as () => void)();
+  }, label);
 }
 
 /** Puerto local sin ningún servidor escuchando (y que Chromium no bloquea). */
