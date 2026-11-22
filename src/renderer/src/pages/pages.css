@@ -1,0 +1,162 @@
+/* Páginas internas de Callisto (historial, configuración). Estilo sobrio de Windows, claro y oscuro. */
+
+:root {
+  --bg: #f7f7f7;
+  --surface: #ffffff;
+  --fg: #1b1b1b;
+  --muted: #5f5f5f;
+  --border: #e3e3e3;
+  --hover: rgba(0, 0, 0, 0.05);
+  --active: rgba(0, 0, 0, 0.09);
+  --accent: #0067c0;
+  --accent-fg: #ffffff;
+  --danger: #c42b1c;
+  --field-border: #d6d6d6;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #202020;
+    --surface: #2b2b2b;
+    --fg: #f1f1f1;
+    --muted: #b5b5b5;
+    --border: #3a3a3a;
+    --hover: rgba(255, 255, 255, 0.06);
+    --active: rgba(255, 255, 255, 0.12);
+    --accent: #4cc2ff;
+    --accent-fg: #000000;
+    --danger: #ff99a4;
+    --field-border: #4a4a4a;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 28px 24px 64px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+h1 { font-size: 24px; font-weight: 600; margin: 0; flex: 1; min-width: 160px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.muted { color: var(--muted); }
+
+button, select, input {
+  font: inherit;
+  color: inherit;
+}
+
+.btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--field-border);
+  background: var(--surface);
+  cursor: default;
+}
+.btn:hover { background: var(--hover); }
+.btn:active { background: var(--active); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+.icon-btn:hover { background: var(--active); color: var(--fg); }
+
+.search {
+  width: min(360px, 100%);
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 17px;
+  border: 1px solid var(--field-border);
+  background: var(--surface);
+}
+
+select {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--field-border);
+  background: var(--surface);
+}
+
+/* ---------------------------------------------------------------- historial */
+
+.day { margin-bottom: 16px; padding: 8px 0; }
+.day-title { font-size: 13px; font-weight: 600; color: var(--muted); padding: 4px 20px 8px; margin: 0; }
+
+.visit {
+  display: grid;
+  grid-template-columns: 52px 20px minmax(0, 1fr) auto 28px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 20px;
+  cursor: default;
+}
+.visit:hover, .visit:focus-visible { background: var(--hover); outline: none; }
+.visit-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.visit-icon { width: 16px; height: 16px; display: grid; place-items: center; color: var(--muted); }
+.visit-icon img { width: 16px; height: 16px; object-fit: contain; }
+.visit-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visit-host { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.visit .icon-btn { opacity: 0; }
+.visit:hover .icon-btn, .visit:focus-within .icon-btn { opacity: 1; }
+
+.clear-panel { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.empty { text-align: center; padding: 48px 0; color: var(--muted); }
+
+/* ---------------------------------------------------------------- configuración */
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+.row + .row { border-top: 1px solid var(--border); }
+.radio { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 8px; }
+td { padding: 6px 8px; border-top: 1px solid var(--border); }
+td:last-child, th:last-child { text-align: right; }
+.setting-allow { color: inherit; }
+.setting-block { color: var(--danger); }

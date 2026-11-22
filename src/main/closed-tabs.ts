@@ -18,11 +18,21 @@ export function isRestorable(s: TabSnapshot): boolean {
 }
 
 /**
- * Pestañas y ventanas cerradas recientemente (Ctrl+Shift+T), solo en memoria durante la sesión.
- * Guardarlas entre reinicios es parte de V0.4 (persistencia).
+ * Pestañas y ventanas cerradas recientemente (Ctrl+Shift+T). Se guardan con la sesión, así que sobreviven a un
+ * reinicio. `onChange` avisa para guardar.
  */
 export class ClosedTabs {
-  private readonly stack: ClosedEntry[] = [];
+  private readonly stack: ClosedEntry[];
+  onChange: (() => void) | null = null;
+
+  constructor(initial: ClosedEntry[] = []) {
+    this.stack = initial.slice(-LIMIT);
+  }
+
+  /** Copia de la pila, de la más antigua a la más reciente. */
+  entries(): ClosedEntry[] {
+    return this.stack.slice();
+  }
 
   push(entry: ClosedEntry): void {
     if (entry.kind === 'tab' && !isRestorable(entry.tab)) return;
@@ -33,10 +43,18 @@ export class ClosedTabs {
     }
     this.stack.push(entry);
     if (this.stack.length > LIMIT) this.stack.shift();
+    this.onChange?.();
   }
 
   pop(): ClosedEntry | undefined {
-    return this.stack.pop();
+    const e = this.stack.pop();
+    if (e) this.onChange?.();
+    return e;
+  }
+
+  clear(): void {
+    this.stack.length = 0;
+    this.onChange?.();
   }
 
   get size(): number {

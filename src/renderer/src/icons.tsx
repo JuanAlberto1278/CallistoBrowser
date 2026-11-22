@@ -43,3 +43,16 @@ export const ChevronDownIcon = () => (
 export const ZoomIcon = () => (
   <svg {...base} width={14} height={14}><circle cx="7" cy="7" r="4" /><path d="m10 10 3.5 3.5M5.3 7h3.4M7 5.3v3.4" /></svg>
 );
+export const MoreIcon = () => (
+  <svg {...base}><circle cx="3.5" cy="8" r="0.9" fill="currentColor" /><circle cx="8" cy="8" r="0.9" fill="currentColor" /><circle cx="12.5" cy="8" r="0.9" fill="currentColor" /></svg>
+);
+export const HistoryIcon = () => (
+  <svg {...base}><path d="M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.5 2.5v2.6h2.6" /><path d="M8 5v3.2l2.2 1.4" /></svg>
+);
+export const SettingsIcon = () => (
+  <svg {...base}><circle cx="8" cy="8" r="2" /><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" /></svg>
+);
+/** Ícono de las páginas internas: una luna (Calisto es una luna de Júpiter). */
+export const CallistoIcon = () => (
+  <svg {...base} width={14} height={14}><circle cx="8" cy="8" r="5.5" /><circle cx="6.3" cy="6.5" r="1" /><circle cx="9.6" cy="9.8" r="1.4" /></svg>
+);

@@ -19,6 +19,10 @@ const api: CallistoUiApi = {
   find: (query, forward, newSession) => ipcRenderer.send(IPC.find, String(query), forward === true, newSession === true),
   closeFind: () => ipcRenderer.send(IPC.closeFind),
   resetZoom: () => ipcRenderer.send(IPC.resetZoom),
+  suggest: (text) => ipcRenderer.invoke(IPC.suggest, String(text)),
+  setOverlayHeight: (px) => ipcRenderer.send(IPC.overlayHeight, Number(px)),
+  respondPermission: (id, allow, remember) => ipcRenderer.send(IPC.respondPermission, Number(id), allow === true, remember === true),
+  showAppMenu: () => ipcRenderer.send(IPC.appMenu),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
   },

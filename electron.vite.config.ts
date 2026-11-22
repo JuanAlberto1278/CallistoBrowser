@@ -21,6 +21,8 @@ export default defineConfig({
           ui: resolve(__dirname, 'src/preload/ui.ts'),
           // Se inyecta en TODAS las páginas web: no expone nada, solo corrige capacidades WebAuthn
           'web-content': resolve(__dirname, 'src/preload/web-content.ts'),
+          // Páginas internas (historial, configuración): API acotada a cada página
+          internal: resolve(__dirname, 'src/preload/internal.ts'),
         },
       },
     },
@@ -31,7 +33,15 @@ export default defineConfig({
     plugins: [react()],
     build: {
       minify: true,
-      rollupOptions: { input: { index: resolve(__dirname, 'src/renderer/index.html') } },
+      rollupOptions: {
+        input: {
+          // Interfaz del navegador (callisto://ui)
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          // Páginas internas (callisto://history, callisto://settings)
+          history: resolve(__dirname, 'src/renderer/history.html'),
+          settings: resolve(__dirname, 'src/renderer/settings.html'),
+        },
+      },
     },
   },
 });

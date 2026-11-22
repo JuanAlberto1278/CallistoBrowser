@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import type { TabState } from '../../shared/ipc';
 import { displayUrl } from '../../shared/omnibox';
-import { CloseIcon, GlobeIcon, PlusIcon } from './icons';
+import { CloseIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon } from './icons';
 
 const DRAG_TYPE = 'application/x-callisto-tab';
 const TAB_WIDTH = 220;
@@ -117,6 +117,10 @@ export function TabStrip({ tabs, activeId, favicons }: Props) {
                 <span className="tab-icon" aria-hidden="true">
                   {t.isLoading ? (
                     <span className="spinner" data-testid="tab-spinner" />
+                  ) : t.url.startsWith('callisto://history') ? (
+                    <HistoryIcon />
+                  ) : t.url.startsWith('callisto://settings') ? (
+                    <SettingsIcon />
                   ) : icon ? (
                     <img src={icon} alt="" width={16} height={16} data-testid="tab-favicon" draggable={false} />
                   ) : (

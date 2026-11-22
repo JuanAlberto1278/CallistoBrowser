@@ -32,6 +32,8 @@ export type EditCommand = 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'pasteAnd
 export interface PageMenuActions {
   canGoBack: boolean;
   canGoForward: boolean;
+  /** Buscador configurado, para "Buscar «…» en Google". */
+  searchEngineName: string;
   openInNewTab(url: string, referrer?: Referrer): void;
   openInNewWindow(url: string, referrer?: Referrer): void;
   copyText(text: string): void;
@@ -99,7 +101,7 @@ export function pageMenuTemplate(p: ContextMenuParams, a: PageMenuActions): Item
   } else if (selection) {
     items.push(
       { label: 'Copiar', accelerator: 'Ctrl+C', registerAccelerator: false, click: () => a.edit('copy') },
-      { label: `Buscar «${menuSnippet(selection)}» en Google`, click: () => a.searchFor(selection) },
+      { label: `Buscar «${menuSnippet(selection)}» en ${a.searchEngineName}`, click: () => a.searchFor(selection) },
       SEP,
     );
   }
@@ -157,6 +159,41 @@ export function tabMenuTemplate(info: TabMenuInfo, a: TabMenuActions): Item[] {
     SEP,
     reopen,
   ]);
+}
+
+// ---------------------------------------------------------------- menú "Configuración y más" (botón ⋯)
+
+export interface AppMenuActions {
+  newTab(): void;
+  newWindow(): void;
+  history(): void;
+  zoom(direction: 'in' | 'out' | 'reset'): void;
+  find(): void;
+  settings(): void;
+  closeWindow(): void;
+}
+
+export function appMenuTemplate(info: { zoomPercent: number }, a: AppMenuActions): Item[] {
+  return [
+    { label: 'Nueva pestaña', accelerator: 'Ctrl+T', registerAccelerator: false, click: () => a.newTab() },
+    { label: 'Nueva ventana', accelerator: 'Ctrl+N', registerAccelerator: false, click: () => a.newWindow() },
+    SEP,
+    { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },
+    SEP,
+    {
+      label: `Zoom (${info.zoomPercent} %)`,
+      submenu: [
+        { label: 'Acercar', accelerator: 'Ctrl+Plus', registerAccelerator: false, click: () => a.zoom('in') },
+        { label: 'Alejar', accelerator: 'Ctrl+-', registerAccelerator: false, click: () => a.zoom('out') },
+        { label: 'Restablecer', accelerator: 'Ctrl+0', registerAccelerator: false, enabled: info.zoomPercent !== 100, click: () => a.zoom('reset') },
+      ],
+    },
+    { label: 'Buscar en la página', accelerator: 'Ctrl+F', registerAccelerator: false, click: () => a.find() },
+    SEP,
+    { label: 'Configuración', click: () => a.settings() },
+    SEP,
+    { label: 'Cerrar ventana', accelerator: 'Ctrl+Shift+W', registerAccelerator: false, click: () => a.closeWindow() },
+  ];
 }
 
 // ---------------------------------------------------------------- interfaz (barra de direcciones y búsqueda)

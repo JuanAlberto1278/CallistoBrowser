@@ -146,7 +146,7 @@ const params = (p: Partial<ContextMenuParams>): ContextMenuParams =>
   }) as ContextMenuParams;
 
 const pageActions = (): PageMenuActions => ({
-  canGoBack: true, canGoForward: false,
+  canGoBack: true, canGoForward: false, searchEngineName: 'Google',
   openInNewTab: vi.fn(), openInNewWindow: vi.fn(), copyText: vi.fn(), copyImageAt: vi.fn(), searchFor: vi.fn(), edit: vi.fn(),
   replaceMisspelling: vi.fn(), back: vi.fn(), forward: vi.fn(), reload: vi.fn(), inspect: vi.fn(),
 });

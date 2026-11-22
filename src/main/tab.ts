@@ -1,13 +1,16 @@
 import { EventEmitter } from 'node:events';
 import { WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type Referrer, type WebContents } from 'electron';
-import type { Profile } from './profile';
-import type { FindState, Notice, TabState } from '../shared/ipc';
-import { resolveInput } from '../shared/omnibox';
+import type { PermissionRequest, Profile } from './profile';
+import type { FindState, Notice, PermissionPrompt, TabState } from '../shared/ipc';
+import type { ResolvedInput } from '../shared/omnibox';
 import { classifyUrl } from '../shared/url-security';
 import { stepZoom, zoomPercent } from '../shared/zoom';
 import { describeNetError, ERR_ABORTED, HTTPS_UPGRADE_FALLBACK_ERRORS } from '../shared/net-errors';
+import { internalPageOf } from '../shared/internal-pages';
 import { errorPageScript } from './error-page';
 import type { TabSnapshot } from './closed-tabs';
+import type { SavedTab } from './session-store';
+import { permissionPhrase } from './permissions';
 
 /**
  * Lo asigna la ventana dueña: crea la pestaña (o la ventana) que alojará el contenido que abre la página
@@ -15,16 +18,26 @@ import type { TabSnapshot } from './closed-tabs';
  */
 export type OpenHandler = (opener: Tab, options: BrowserWindowConstructorOptions, disposition: string) => Tab;
 
+export type TabKind = 'web' | 'internal';
+
 export interface TabOptions {
+  /** 'internal': historial/configuración, con su propia sesión (nunca la sesión web del perfil). */
+  kind?: TabKind;
   /** Contenido ya creado por Chromium (window.open, target=_blank): la pestaña lo adopta. */
   adopt?: BrowserWindowConstructorOptions;
   openerId?: number | null;
+  /** Pestaña restaurada que todavía no se cargó: se carga recién cuando se la activa. */
+  pending?: SavedTab;
 }
 
 interface FailedLoad {
   url: string;
   code: number;
   title: string;
+}
+
+interface PendingPermission extends PermissionPrompt {
+  responders: PermissionRequest[];
 }
 
 type TabEvents = {
@@ -40,8 +53,9 @@ type TabEvents = {
 };
 
 let nextTabId = 1;
+let nextPromptId = 1;
 
-/** Una pestaña: un WebContentsView con su navegación, búsqueda, zoom y aviso independientes. */
+/** Una pestaña: un WebContentsView con su navegación, búsqueda, zoom, avisos y permisos independientes. */
 export class Tab extends EventEmitter<TabEvents> {
   private static readonly byContentsId = new Map<number, Tab>();
 
@@ -50,6 +64,7 @@ export class Tab extends EventEmitter<TabEvents> {
   }
 
   readonly id = nextTabId++;
+  readonly kind: TabKind;
   readonly view: WebContentsView;
   /**
    * Referencia propia al contenido: cuando se destruye, Electron deja `view.webContents` en undefined, pero acá sigue
@@ -60,10 +75,14 @@ export class Tab extends EventEmitter<TabEvents> {
   openerId: number | null;
   openHandler: OpenHandler | null = null;
 
+  private pending: SavedTab | null;
   private failed: FailedLoad | null = null;
   private pendingErrorScript: string | null = null;
   /** Navegación a https elegida por Callisto (no por el usuario): si la conexión falla, se reintenta con http. */
   private httpsUpgrade: { https: string; http: string } | null = null;
+  /** Cómo empezó la próxima navegación (para el historial): escrita, recarga o atrás/adelante. */
+  private nextTransition: 'typed' | 'reload' | 'history' | null = null;
+  private lastRecordedUrl = '';
   private stateQueued = false;
   private closing = false;
   private faviconKey: string | null = null;
@@ -72,27 +91,30 @@ export class Tab extends EventEmitter<TabEvents> {
   private findRequest = 0;
   private noticeState: Notice | null = null;
   private static noticeSeq = 0;
+  private permissionQueue: PendingPermission[] = [];
 
   constructor(readonly profile: Profile, opts: TabOptions = {}) {
     super();
     this.openerId = opts.openerId ?? null;
+    this.pending = opts.pending ?? null;
+    this.kind = opts.kind ?? (opts.pending && internalPageOf(opts.pending.url) ? 'internal' : 'web');
+    this.faviconKey = opts.pending?.faviconKey ?? null;
     const adopt = opts.adopt;
+    const secure = { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, safeDialogs: true } as const;
     this.view = adopt
       ? // Electron exige construir el contenedor con las opciones recibidas (incluyen el webContents ya creado)
         new WebContentsView({ webContents: (adopt as { webContents?: WebContents }).webContents, webPreferences: adopt.webPreferences })
-      : new WebContentsView({
-          webPreferences: {
-            session: profile.session,
-            sandbox: true,
-            contextIsolation: true,
-            nodeIntegration: false,
-            // Necesario para que el preload de corrección WebAuthn también corra en iframes (no da acceso a Node: sandbox)
-            nodeIntegrationInSubFrames: true,
-            webviewTag: false,
-            safeDialogs: true,
-            spellcheck: true,
-          },
-        });
+      : this.kind === 'internal'
+        ? new WebContentsView({ webPreferences: { ...secure, session: profile.internal.session, preload: profile.internal.preload, spellcheck: false } })
+        : new WebContentsView({
+            webPreferences: {
+              ...secure,
+              session: profile.session,
+              // Necesario para que el preload de corrección WebAuthn también corra en iframes (no da acceso a Node: sandbox)
+              nodeIntegrationInSubFrames: true,
+              spellcheck: true,
+            },
+          });
     this.view.setBackgroundColor('#ffffff');
     this.webContents = this.view.webContents;
     Tab.byContentsId.set(this.webContents.id, this);
@@ -106,6 +128,7 @@ export class Tab extends EventEmitter<TabEvents> {
 
     wc.on('destroyed', () => {
       Tab.byContentsId.delete(contentsId);
+      this.denyAllPermissions();
       if (!this.closing) this.emit('closed-by-page');
     });
 
@@ -114,6 +137,8 @@ export class Tab extends EventEmitter<TabEvents> {
       this.failed = null;
       this.pendingErrorScript = null;
       if (this.httpsUpgrade && details.url !== this.httpsUpgrade.https) this.httpsUpgrade = null;
+      // Los pedidos de permiso de la página anterior ya no corresponden
+      if (this.permissionQueue.length && originOf(details.url) !== this.permissionQueue[0]!.origin) this.denyAllPermissions();
       changed();
     });
     wc.on('did-start-loading', changed);
@@ -125,15 +150,34 @@ export class Tab extends EventEmitter<TabEvents> {
       }
       changed();
     });
-    wc.on('did-navigate', () => {
+    wc.on('did-navigate', (_e, url, httpResponseCode) => {
       // Documento nuevo: favicon y resultados de búsqueda anteriores ya no valen
       this.faviconKey = null;
       this.faviconSeq++;
       if (this.findState) this.findState = { ...this.findState, activeMatch: 0, matches: 0, searched: false };
+      this.applySavedZoom(url);
+      const transition = this.nextTransition;
+      this.nextTransition = null;
+      // Al historial: páginas que respondieron (no las de error), salvo recargas y atrás/adelante
+      const responded = url.startsWith('file:') ? !this.failed : httpResponseCode > 0;
+      if (responded && transition !== 'reload' && transition !== 'history') this.record(url, transition === 'typed');
+      else this.lastRecordedUrl = url;
       changed();
     });
-    wc.on('did-navigate-in-page', changed);
-    wc.on('page-title-updated', changed);
+    wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
+      // Navegación dentro de la página (aplicaciones web): cuenta como visita si cambia algo más que el ancla (#)
+      // (acá el título sí es el del documento actual)
+      if (isMainFrame && url.split('#')[0] !== this.lastRecordedUrl.split('#')[0]) this.record(url, false, this.realTitle());
+      changed();
+    });
+    wc.on('page-title-updated', (_e, title) => {
+      if (this.isRecording) this.profile.history.setTitle(wc.getURL(), title);
+      changed();
+    });
+    wc.on('did-finish-load', () => {
+      const title = this.realTitle();
+      if (this.isRecording && title) this.profile.history.setTitle(wc.getURL(), title);
+    });
     // Chromium informa los íconos declarados en <head> y, si no hay ninguno, propone /favicon.ico del sitio (como Chrome).
     wc.on('page-favicon-updated', (_e, favicons) => {
       const url = favicons.find((f) => /^(https?:|data:)/i.test(f));
@@ -175,6 +219,13 @@ export class Tab extends EventEmitter<TabEvents> {
       changed();
     });
 
+    if (this.kind === 'internal') {
+      // Las páginas internas no navegan ni abren ventanas por su cuenta: todo pasa por su API, que valida el proceso principal.
+      wc.on('will-navigate', (e) => e.preventDefault());
+      wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+      return;
+    }
+
     // Enlaces target=_blank y window.open: la ventana dueña decide si van a una pestaña o a una ventana nueva.
     // Se conserva window.opener (necesario para los popups de inicio de sesión OAuth).
     wc.setWindowOpenHandler((details) => {
@@ -190,12 +241,34 @@ export class Tab extends EventEmitter<TabEvents> {
     });
   }
 
-  private loadFavicon(url: string): void {
+  private get isRecording(): boolean {
+    return this.kind === 'web' && this.profile.recordsHistory;
+  }
+
+  /**
+   * Registra la visita. El título se guarda aparte (al informarlo la página o al terminar de cargar): justo al llegar a
+   * un documento nuevo, Chromium todavía puede devolver el título de la página anterior.
+   */
+  private record(url: string, typed: boolean, title = ''): void {
+    this.lastRecordedUrl = url;
+    if (this.isRecording) this.profile.history.addVisit(url, { typed, title });
+  }
+
+  /** Título real de la página (Chromium devuelve la dirección cuando la página no tiene título). */
+  private realTitle(): string {
+    const title = this.webContents.getTitle();
+    const url = this.webContents.getURL();
+    return title && title !== url && !url.endsWith(title) ? title : '';
+  }
+
+  private loadFavicon(iconUrl: string): void {
     const seq = ++this.faviconSeq;
-    this.profile.favicons.load(url).then((data) => {
+    const pageUrl = this.webContents.getURL();
+    this.profile.favicons.load(iconUrl).then((data) => {
       if (seq !== this.faviconSeq || this.webContents.isDestroyed() || !data) return;
-      this.faviconKey = url;
-      this.emit('favicon', url, data);
+      this.faviconKey = iconUrl;
+      if (this.isRecording && !iconUrl.startsWith('data:')) this.profile.history.setIcon(pageUrl, iconUrl);
+      this.emit('favicon', iconUrl, data);
       this.queueState();
     });
   }
@@ -210,6 +283,7 @@ export class Tab extends EventEmitter<TabEvents> {
   }
 
   get url(): string {
+    if (this.pending) return this.pending.url;
     return this.failed ? this.failed.url : this.webContents.getURL();
   }
 
@@ -219,55 +293,79 @@ export class Tab extends EventEmitter<TabEvents> {
     return (url === '' || url === 'about:blank') && !this.webContents.isLoading();
   }
 
+  /** Página interna que muestra (si es una pestaña interna). */
+  get internalPage() {
+    return this.kind === 'internal' ? internalPageOf(this.url) : null;
+  }
+
   get state(): TabState {
     const wc = this.webContents;
     const url = this.url;
+    const p = this.pending;
+    const blank = url === '' || url === 'about:blank';
     return {
       id: this.id,
       url,
       // Una página en blanco no tiene título (Chromium devolvería "about:blank")
-      title: this.failed ? this.failed.title : url === '' || url === 'about:blank' ? '' : wc.getTitle(),
-      isLoading: wc.isLoading(),
-      canGoBack: wc.navigationHistory.canGoBack(),
-      canGoForward: wc.navigationHistory.canGoForward(),
+      title: p ? p.title : this.failed ? this.failed.title : blank ? '' : wc.getTitle(),
+      isLoading: p ? false : wc.isLoading(),
+      canGoBack: p ? p.index > 0 : wc.navigationHistory.canGoBack(),
+      canGoForward: p ? p.index < p.entries.length - 1 : wc.navigationHistory.canGoForward(),
       security: classifyUrl(url, this.failed !== null),
       faviconKey: this.faviconKey,
-      zoomPercent: zoomPercent(wc.getZoomFactor()),
+      zoomPercent: zoomPercent(p ? (this.savedZoom(url) ?? 1) : wc.getZoomFactor()),
       find: this.findState,
       notice: this.noticeState,
+      permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
     };
+  }
+
+  /** ¿Restaurada pero todavía sin cargar? */
+  get isPending(): boolean {
+    return this.pending !== null;
+  }
+
+  /** Carga una pestaña restaurada (se llama al activarla). */
+  ensureLoaded(): void {
+    const p = this.pending;
+    if (!p) return;
+    this.pending = null;
+    this.restore(p);
   }
 
   // ---------------------------------------------------------------- navegación
 
-  /** Navega a lo que el usuario escribió en la barra de direcciones. Devuelve false si no había nada que hacer. */
-  navigate(input: string): boolean {
-    const resolved = resolveInput(input);
-    if (!resolved) return false;
-    if (resolved.kind === 'url' && resolved.upgradedToHttps) {
-      this.httpsUpgrade = { https: resolved.url, http: resolved.url.replace(/^https:/, 'http:') };
-    } else {
-      this.httpsUpgrade = null;
-    }
+  /** Abre lo que resolvió la barra de direcciones. `typed`: lo escribió el usuario (cuenta para el autocompletado). */
+  openResolved(resolved: ResolvedInput, typed: boolean): void {
+    this.httpsUpgrade = resolved.kind === 'url' && resolved.upgradedToHttps ? { https: resolved.url, http: resolved.url.replace(/^https:/, 'http:') } : null;
+    this.nextTransition = typed ? 'typed' : null;
     this.loadURL(resolved.url);
-    return true;
   }
 
   loadURL(url: string, referrer?: Referrer): void {
+    this.pending = null;
     // Los errores de carga se manejan con 'did-fail-load'; la promesa rechazada no aporta nada más.
     this.webContents.loadURL(url, referrer ? { httpReferrer: referrer } : undefined).catch(() => {});
   }
 
   goBack(): void {
-    if (this.webContents.navigationHistory.canGoBack()) this.webContents.navigationHistory.goBack();
+    this.ensureLoaded();
+    if (!this.webContents.navigationHistory.canGoBack()) return;
+    this.nextTransition = 'history';
+    this.webContents.navigationHistory.goBack();
   }
 
   goForward(): void {
-    if (this.webContents.navigationHistory.canGoForward()) this.webContents.navigationHistory.goForward();
+    this.ensureLoaded();
+    if (!this.webContents.navigationHistory.canGoForward()) return;
+    this.nextTransition = 'history';
+    this.webContents.navigationHistory.goForward();
   }
 
   reload(ignoreCache = false): void {
+    if (this.pending) return this.ensureLoaded();
     if (this.failed) return this.loadURL(this.failed.url);
+    this.nextTransition = 'reload';
     if (ignoreCache) this.webContents.reloadIgnoringCache();
     else this.webContents.reload();
   }
@@ -276,9 +374,10 @@ export class Tab extends EventEmitter<TabEvents> {
     this.webContents.stop();
   }
 
-  // ---------------------------------------------------------------- historial (duplicar / reabrir)
+  // ---------------------------------------------------------------- historial (duplicar / reabrir / sesión)
 
   snapshot(): TabSnapshot {
+    if (this.pending) return { entries: this.pending.entries, index: this.pending.index };
     const h = this.webContents.navigationHistory;
     const entries = h.getAllEntries();
     // Una carga fallida no queda como entrada propia: se guarda la URL que falló para poder reintentarla.
@@ -289,15 +388,42 @@ export class Tab extends EventEmitter<TabEvents> {
     return { entries, index: h.getActiveIndex() };
   }
 
+  /** Estado para guardar en la sesión. */
+  saved(): SavedTab {
+    const s = this.snapshot();
+    const state = this.state;
+    return { ...s, url: state.url, title: state.title, faviconKey: this.faviconKey };
+  }
+
   restore(s: TabSnapshot): void {
+    this.pending = null;
+    this.nextTransition = 'history'; // volver a una página no es una visita nueva
     this.webContents.navigationHistory.restore({ entries: s.entries, index: s.index }).catch(() => {});
   }
 
-  // ---------------------------------------------------------------- zoom (Chromium lo aplica por sitio, como Chrome y Edge)
+  // ---------------------------------------------------------------- zoom por sitio (como Chrome y Edge), guardado
+
+  private savedZoom(url: string): number | undefined {
+    const host = webHost(url);
+    return host ? this.profile.zoom.get(host) : undefined;
+  }
+
+  /**
+   * Al llegar a un sitio, aplica el zoom guardado; sin zoom guardado, el 100 % (todo cambio de zoom pasa por `zoom()`,
+   * que lo guarda, así que un sitio sin registro es un sitio al 100 %, aunque se haya borrado hace un momento).
+   */
+  private applySavedZoom(url: string): void {
+    if (!webHost(url)) return;
+    const target = this.savedZoom(url) ?? 1;
+    if (Math.abs(target - this.webContents.getZoomFactor()) > 0.001) this.webContents.setZoomFactor(target);
+  }
 
   zoom(direction: 'in' | 'out' | 'reset'): void {
     const wc = this.webContents;
-    wc.setZoomFactor(direction === 'reset' ? 1 : stepZoom(wc.getZoomFactor(), direction));
+    const factor = direction === 'reset' ? 1 : stepZoom(wc.getZoomFactor(), direction);
+    wc.setZoomFactor(factor);
+    const host = webHost(wc.getURL());
+    if (host) this.profile.zoom.set(host, factor);
     this.emit('zoom-changed');
   }
 
@@ -359,11 +485,62 @@ export class Tab extends EventEmitter<TabEvents> {
     this.queueState();
   }
 
+  // ---------------------------------------------------------------- permisos (cámara, micrófono, ubicación, notificaciones)
+
+  get hasPermissionPrompt(): boolean {
+    return this.permissionQueue.length > 0;
+  }
+
+  /** Muestra el pedido en la barra de la pestaña (uno a la vez; pedidos iguales esperan la misma respuesta). */
+  requestPermission(req: PermissionRequest): void {
+    const same = this.permissionQueue.find((p) => p.origin === req.origin && p.permissions.join() === req.permissions.join());
+    if (same) {
+      same.responders.push(req);
+      return;
+    }
+    this.permissionQueue.push({ id: nextPromptId++, origin: req.origin, permissions: req.permissions, phrase: permissionPhrase(req.permissions), responders: [req] });
+    this.queueState();
+  }
+
+  respondPermission(id: number, allow: boolean, remember: boolean): void {
+    const i = this.permissionQueue.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const [p] = this.permissionQueue.splice(i, 1);
+    for (const r of p!.responders) r.respond(allow, remember);
+    this.queueState();
+  }
+
+  private denyAllPermissions(): void {
+    const queue = this.permissionQueue;
+    this.permissionQueue = [];
+    for (const p of queue) for (const r of p.responders) r.respond(false, false);
+    if (queue.length && !this.webContents.isDestroyed()) this.queueState();
+  }
+
   // ---------------------------------------------------------------- ciclo de vida
 
   destroy(): void {
     this.closing = true;
+    this.denyAllPermissions();
     this.removeAllListeners();
     if (!this.webContents.isDestroyed()) this.webContents.close();
+  }
+}
+
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return '';
+  }
+}
+
+/** Host de una página web (http/https); null para otras. */
+function webHost(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.hostname : null;
+  } catch {
+    return null;
   }
 }

@@ -13,6 +13,12 @@ test.afterEach(async () => { await c.close(); });
 
 const windowTitle = () => c.app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0]!.getTitle());
 
+/**
+ * Vuelve a una página local después de verificar una búsqueda real: tras muchas búsquedas automatizadas, Google
+ * responde con su página anti-robots, que hace lento el cierre de Playwright. (Callisto sale rápido igual: verificado.)
+ */
+const leaveSearchEngine = () => typeAddress(c.ui, 'about:blank');
+
 test('arranca con la barra de direcciones vacía y enfocada', async () => {
   const address = c.ui.getByTestId('address');
   await expect(address).toHaveValue('');
@@ -83,6 +89,7 @@ test('texto que no es una dirección se busca en Google', async () => {
   const request = c.tab.waitForRequest(/^https:\/\/www\.google\.com\/search\?q=hola\+callisto$/);
   await typeAddress(c.ui, 'hola callisto');
   await request;
+  await leaveSearchEngine();
 });
 
 test('página de error propia cuando falla la conexión', async () => {
@@ -135,16 +142,6 @@ test('user-agent honesto: Callisto, sin Electron', async () => {
   expect(await c.tab.evaluate(() => navigator.userAgent)).toBe(headers['user-agent']);
 });
 
-test('permisos sensibles denegados por defecto', async () => {
-  await typeAddress(c.ui, `${server.base}/page1`);
-  await expect(c.tab).toHaveTitle('Página 1');
-  expect(await c.tab.evaluate(() => Notification.requestPermission())).toBe('denied');
-  const geo = await c.tab.evaluate(() => new Promise((r) => navigator.geolocation.getCurrentPosition(() => r('concedido'), (e) => r(e.code))));
-  expect(geo).toBe(1); // PERMISSION_DENIED
-  const media = await c.tab.evaluate(() => navigator.mediaDevices.getUserMedia({ audio: true }).then(() => 'concedido', (e) => e.name));
-  expect(media).toBe('NotAllowedError');
-});
-
 test('corrección de passkeys: no se anuncia autocompletado', async () => {
   await typeAddress(c.ui, `${server.base}/page1`);
   await expect(c.tab).toHaveTitle('Página 1');
@@ -158,6 +155,7 @@ test('las páginas web no pueden llegar a la interfaz ni a su API', async () => 
   await typeAddress(c.ui, 'callisto://ui/index.html');
   // No es un esquema navegable: se trata como búsqueda, nunca carga la interfaz dentro de la pestaña
   await expect(c.ui.getByTestId('address')).toHaveValue(/google\.com\/search/);
+  await leaveSearchEngine();
 });
 
 test('HTTPS real muestra conexión segura', async () => {

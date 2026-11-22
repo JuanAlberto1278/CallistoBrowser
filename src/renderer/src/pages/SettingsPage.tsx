@@ -1,0 +1,140 @@
+import { useEffect, useState } from 'react';
+import type { SettingsSnapshot } from '../../../shared/internal-api';
+import type { SearchEngineId, Settings } from '../../../shared/settings';
+
+export function SettingsPage() {
+  const api = window.callistoInternal;
+  const [snap, setSnap] = useState<SettingsSnapshot | null>(null);
+
+  useEffect(() => {
+    void api.settings.get().then(setSnap);
+  }, [api]);
+
+  if (!snap) return <div className="page" />;
+  const { settings } = snap;
+  // Se refleja al instante y después se guarda (el proceso principal devuelve lo que quedó guardado)
+  const update = (partial: Partial<Settings>) => {
+    setSnap({ ...snap, settings: { ...settings, ...partial } });
+    void api.settings.set(partial).then(setSnap);
+  };
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <h1>Configuración</h1>
+      </div>
+
+      <section className="card" aria-labelledby="s-search">
+        <h2 id="s-search">Buscador</h2>
+        <div className="row">
+          <label htmlFor="engine">Buscador que usa la barra de direcciones</label>
+          <select
+            id="engine"
+            data-testid="settings-engine"
+            value={settings.searchEngine}
+            onChange={(e) => update({ searchEngine: e.target.value as SearchEngineId })}
+          >
+            {snap.engines.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
+
+      <section className="card" aria-labelledby="s-startup">
+        <h2 id="s-startup">Al abrir Callisto</h2>
+        <label className="radio">
+          <input
+            type="radio"
+            name="startup"
+            data-testid="settings-startup-restore"
+            checked={settings.startup === 'restore'}
+            onChange={() => update({ startup: 'restore' })}
+          />
+          Continuar donde lo dejé (las mismas ventanas y pestañas)
+        </label>
+        <label className="radio">
+          <input
+            type="radio"
+            name="startup"
+            data-testid="settings-startup-newtab"
+            checked={settings.startup === 'newtab'}
+            onChange={() => update({ startup: 'newtab' })}
+          />
+          Abrir una pestaña nueva
+        </label>
+      </section>
+
+      <section className="card" aria-labelledby="s-perms">
+        <h2 id="s-perms">Permisos de sitios</h2>
+        {snap.permissions.length === 0 ? (
+          <p className="muted" data-testid="settings-no-permissions">
+            Ningún sitio tiene permisos guardados. Cuando un sitio pida usar la cámara, el micrófono, tu ubicación o mostrarte
+            notificaciones, Callisto te va a preguntar.
+          </p>
+        ) : (
+          <table data-testid="settings-permissions">
+            <thead>
+              <tr>
+                <th>Sitio</th>
+                <th>Permiso</th>
+                <th>Decisión</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {snap.permissions.map((p) => (
+                <tr key={`${p.origin} ${p.permission}`}>
+                  <td>{p.origin}</td>
+                  <td>{p.label}</td>
+                  <td className={p.setting === 'allow' ? 'setting-allow' : 'setting-block'}>{p.setting === 'allow' ? 'Permitido' : 'Bloqueado'}</td>
+                  <td>
+                    <button className="btn" onClick={() => void api.settings.removePermission(p.origin, p.permission).then(setSnap)}>
+                      Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="muted">Al quitar una decisión, el sitio vuelve a preguntar la próxima vez.</p>
+      </section>
+
+      <section className="card" aria-labelledby="s-zoom">
+        <h2 id="s-zoom">Zoom de sitios</h2>
+        {snap.zoom.length === 0 ? (
+          <p className="muted">Todos los sitios se muestran al 100 %.</p>
+        ) : (
+          <table data-testid="settings-zoom">
+            <tbody>
+              {snap.zoom.map((z) => (
+                <tr key={z.host}>
+                  <td>{z.host}</td>
+                  <td>{z.percent} %</td>
+                  <td>
+                    <button className="btn" onClick={() => void api.settings.removeZoom(z.host).then(setSnap)}>
+                      Restablecer
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card" aria-labelledby="s-history">
+        <h2 id="s-history">Historial</h2>
+        <div className="row">
+          <span className="muted">Las páginas visitadas se guardan 90 días.</span>
+          <button className="btn" onClick={() => api.openPage('history')}>
+            Ver y borrar el historial
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}

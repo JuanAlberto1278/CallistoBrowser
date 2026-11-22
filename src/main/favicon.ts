@@ -1,5 +1,6 @@
 import type { Session } from 'electron';
 import { decodeDataUrl, sniffImage, toDataUrl } from '../shared/image-sniff';
+import type { FaviconStore } from './profile-store';
 
 /** Los favicons son pequeños; algo más grande no es un favicon razonable y no se procesa. */
 const MAX_BYTES = 256 * 1024;
@@ -14,17 +15,34 @@ const CACHE_LIMIT = 300;
  */
 export class FaviconLoader {
   private readonly cache = new Map<string, Promise<string | null>>();
+  private readonly resolved = new Map<string, string>();
 
-  constructor(private readonly session: Session) {}
+  /** `store`: favicons guardados en la base del perfil (se muestran al reiniciar sin volver a pedirlos). */
+  constructor(private readonly session: Session, private readonly store?: FaviconStore) {}
 
   load(url: string): Promise<string | null> {
     let p = this.cache.get(url);
     if (!p) {
-      p = this.fetch(url).catch(() => null);
+      const saved = this.store?.get(url);
+      p = saved ? Promise.resolve(saved) : this.fetch(url).catch(() => null);
+      p.then((data) => {
+        if (!data) return;
+        this.resolved.set(url, data);
+        if (!saved && !url.startsWith('data:')) this.store?.put(url, data);
+      });
       this.cache.set(url, p);
-      if (this.cache.size > CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value!);
+      if (this.cache.size > CACHE_LIMIT) {
+        const oldest = this.cache.keys().next().value!;
+        this.cache.delete(oldest);
+        this.resolved.delete(oldest);
+      }
     }
     return p;
+  }
+
+  /** Favicon ya conocido (en memoria o guardado), sin descargar nada. */
+  cached(url: string): string | undefined {
+    return this.resolved.get(url) ?? this.store?.get(url);
   }
 
   private async fetch(url: string): Promise<string | null> {

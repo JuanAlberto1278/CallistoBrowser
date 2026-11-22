@@ -2,7 +2,7 @@
 
 Navegador web de escritorio para Windows, basado en Electron (Chromium).
 
-**Versión actual: V0.3, pestañas.** Varias pestañas y ventanas, menús contextuales, buscar en la página y zoom, sobre la base de V0.2 (barra de direcciones, navegación, páginas de error y seguridad).
+**Versión actual: V0.4, persistencia e historial.** Historial con búsqueda y borrado, sugerencias en la barra, restauración de ventanas y pestañas al reiniciar, permisos por sitio y configuración, sobre la base de V0.3 (pestañas, menús, buscar, zoom) y V0.2 (navegación y seguridad).
 
 ## Comandos
 
@@ -18,5 +18,6 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 - [01 — Resultados de las pruebas de concepto (V0.1)](docs/01-v0.1-resultados.md)
 - [02 — V0.2: esqueleto navegable](docs/02-v0.2-esqueleto-navegable.md)
 - [03 — V0.3: pestañas](docs/03-v0.3-pestanas.md)
+- [04 — V0.4: persistencia e historial](docs/04-v0.4-persistencia.md)
 
 Las pruebas de concepto de V0.1 están en [`spikes/`](spikes/README.md), un proyecto separado.

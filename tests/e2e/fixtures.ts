@@ -47,8 +47,16 @@ export async function startServer(): Promise<TestServer> {
           <button id="popup" onclick="window.open('/page2', 'popup', 'width=500,height=400')">Popup</button>
           <button id="opentab" onclick="window.open('/self-close')">Pestaña que se cierra sola</button>
           <input id="field" value="texto de prueba">`));
+      case '/':
+        return html(page('Inicio'));
       case '/page2':
         return html(page('Página 2'));
+      case '/sw-page':
+        // Página con un service worker que consulta permisos sin parar (como hacen sitios como Google)
+        return html(page('Con service worker', `<script>navigator.serviceWorker.register('/sw.js'); setInterval(() => navigator.permissions.query({ name: 'geolocation' }), 5);</script>`));
+      case '/sw.js':
+        res.writeHead(200, { 'Content-Type': 'text/javascript' });
+        return res.end("self.addEventListener('activate', (e) => e.waitUntil(clients.claim())); setInterval(() => navigator.permissions.query({ name: 'notifications' }), 5);");
       case '/page3':
         return html(page('Página 3'));
       case '/self-close':
@@ -131,8 +139,10 @@ export async function launchCallisto(extraArgs: string[] = [], userData?: string
   const app = await electron.launch({
     args: [ROOT, ...extraArgs],
     cwd: ROOT,
-    env: { ...process.env, CALLISTO_USER_DATA_DIR: dir, ELECTRON_RENDERER_URL: '' },
+    // Ventanas invisibles y sin robar el foco (CALLISTO_TEST_VISIBLE=1 para verlas mientras se depura)
+    env: { ...process.env, CALLISTO_USER_DATA_DIR: dir, ELECTRON_RENDERER_URL: '', CALLISTO_TEST_INVISIBLE: process.env.CALLISTO_TEST_VISIBLE ? '' : '1' },
   });
+  const proc = app.process(); // referencia propia: Playwright ya no la da si la app salió sola
   const { ui, tab } = await firstWindowPages(app);
   await ui.waitForLoadState('domcontentloaded');
   return {
@@ -141,8 +151,16 @@ export async function launchCallisto(extraArgs: string[] = [], userData?: string
     ui,
     tab,
     close: async () => {
-      await app.close().catch(() => {});
-      if (!userData) rmSync(dir, { recursive: true, force: true });
+      // Red de seguridad de las pruebas: si el cierre se traba más de 15 s, se termina el proceso en vez de bloquear
+      // la corrida. (No reemplaza la prueba del cierre real: ver "cerrar Callisto con un sitio que usa service workers".)
+      const closed = app.close().then(() => true, () => true);
+      const ok = await Promise.race([closed, new Promise<boolean>((r) => setTimeout(() => r(false), 15_000))]);
+      if (!ok) {
+        console.warn('[pruebas] Callisto no cerró en 15 s; se termina el proceso');
+        proc.kill();
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!userData) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     },
   };
 }

@@ -5,6 +5,7 @@ export type SecurityLevel =
   | 'secure' // HTTPS (Chromium ya rechazó la navegación si el certificado no era válido)
   | 'insecure' // HTTP sin cifrar
   | 'file' // archivo local
+  | 'internal' // página interna de Callisto (historial, configuración)
   | 'error'; // la carga falló (se muestra la página de error)
 
 export function classifyUrl(url: string, failed = false): SecurityLevel {
@@ -23,6 +24,8 @@ export function classifyUrl(url: string, failed = false): SecurityLevel {
       return 'insecure';
     case 'file:':
       return 'file';
+    case 'callisto:':
+      return 'internal';
     default:
       return 'none';
   }

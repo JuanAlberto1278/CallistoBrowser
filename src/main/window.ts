@@ -1,13 +1,24 @@
-import { app, BaseWindow, clipboard, Menu, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Referrer, type Session, type WebContents } from 'electron';
-import { Tab } from './tab';
+import { app, BaseWindow, clipboard, Menu, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
+import { Tab, type TabKind } from './tab';
+import { showWindow } from './test-mode';
 import type { Profile } from './profile';
 import { matchShortcut, type ShortcutAction } from './shortcuts';
-import { ClosedTabs, type TabSnapshot } from './closed-tabs';
-import { pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
-import { IPC, type WindowState } from '../shared/ipc';
+import type { ClosedTabs, TabSnapshot } from './closed-tabs';
+import { appMenuTemplate, pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
+import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
+import { IPC, MAX_OVERLAY_HEIGHT, type WindowState } from '../shared/ipc';
 import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
-import { resolveInput, searchUrl } from '../shared/omnibox';
+import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
+import { internalPageOf, internalUrl, type InternalPage } from '../shared/internal-pages';
+
+/** Guardado de la sesión: cada cambio lo marca; al cerrar la última ventana se guarda en el acto. */
+export interface SessionSaver {
+  markDirty(): void;
+  windowClosing(w: BrowserWindowController): void;
+  /** Guarda ya, con todas las ventanas abiertas, y deja de guardar (salida de la app). */
+  finalSave(): void;
+}
 
 export interface WindowContext {
   profile: Profile;
@@ -15,6 +26,7 @@ export interface WindowContext {
   uiUrl: string;
   uiPreload: string;
   closedTabs: ClosedTabs;
+  session: SessionSaver;
 }
 
 export interface WindowOptions {
@@ -23,8 +35,11 @@ export interface WindowOptions {
   referrer?: Referrer;
   /** Pestañas ya existentes que pasan a esta ventana (abiertas por una página, movidas desde otra ventana). */
   tabs?: Tab[];
-  /** Pestañas a restaurar desde su historial (reabrir una ventana cerrada). */
-  restore?: { tabs: TabSnapshot[]; active: number };
+  /** Pestañas a restaurar (ventana cerrada que se reabre, o sesión anterior): se cargan al activarlas. */
+  restore?: { tabs: SavedTab[]; active: number };
+  /** Posición y tamaño guardados. */
+  bounds?: Rectangle;
+  maximized?: boolean;
   /** Tamaño pedido por un popup (window.open con dimensiones). */
   popupSize?: { width?: number; height?: number };
 }
@@ -36,6 +51,32 @@ interface Attached {
 }
 
 let nextWindowId = 1;
+
+const DEFAULT_SIZE = { width: 1280, height: 860 };
+
+/** Posición inicial: la guardada si sigue visible en alguna pantalla; si no, un tamaño que entre en la pantalla. */
+function initialBounds(opts: WindowOptions): Partial<Rectangle> {
+  const work = screen.getPrimaryDisplay().workArea;
+  const saved = opts.bounds;
+  if (saved) {
+    const area = screen.getDisplayMatching(saved).workArea;
+    const visibleW = Math.min(saved.x + saved.width, area.x + area.width) - Math.max(saved.x, area.x);
+    const visibleH = Math.min(saved.y + saved.height, area.y + area.height) - Math.max(saved.y, area.y);
+    if (visibleW >= 120 && visibleH >= 60) {
+      return { x: saved.x, y: saved.y, width: Math.min(Math.max(400, saved.width), area.width), height: Math.min(Math.max(300, saved.height), area.height) };
+    }
+  }
+  const popup = opts.popupSize;
+  const width = popup?.width ? Math.max(400, popup.width) : DEFAULT_SIZE.width;
+  const height = popup?.height ? Math.max(300, popup.height + chromeHeight({ notice: false, find: false })) : DEFAULT_SIZE.height;
+  return { width: Math.min(width, work.width), height: Math.min(height, work.height) };
+}
+
+/** Pestaña restaurable a partir de un historial (pestaña o ventana cerrada). */
+export function savedFromSnapshot(s: TabSnapshot): SavedTab {
+  const e = s.entries[s.index] ?? s.entries[s.entries.length - 1]!;
+  return { ...s, url: e.url, title: e.title, faviconKey: null };
+}
 
 /**
  * Ventana del navegador: la interfaz (pestañas, barra de herramientas, avisos, búsqueda) arriba y la pestaña activa
@@ -75,13 +116,15 @@ export class BrowserWindowController {
   private stateQueued = false;
   private readonly sentFavicons = new Set<string>();
   private readonly favicons = new Map<string, string>();
-  private closingAll = false;
+  /** La ventana se está cerrando: sus pestañas ya no van a "cerradas" una por una ni a la sesión. */
+  closing = false;
+  /** Alto del panel de sugerencias abierto sobre la página (0 = cerrado). */
+  private overlayHeight = 0;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
-    const popup = opts.popupSize;
-    const width = popup?.width ? Math.max(400, popup.width) : 1280;
-    const height = popup?.height ? Math.max(300, popup.height + chromeHeight({ notice: false, find: false })) : 860;
-    this.win = new BaseWindow({ width, height, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
+    this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
+    showWindow(this.win);
+    if (opts.maximized) this.win.maximize();
 
     this.ui = new WebContentsView({
       webPreferences: {
@@ -95,6 +138,8 @@ export class BrowserWindowController {
         devTools: !app.isPackaged,
       },
     });
+    // Transparente: el panel de sugerencias se superpone a la página y alrededor tiene que verse la página
+    this.ui.setBackgroundColor('#00000000');
     this.uiContents = this.ui.webContents;
     this.win.contentView.addChildView(this.ui);
 
@@ -104,10 +149,22 @@ export class BrowserWindowController {
     this.uiContents.on('before-input-event', (e, input) => this.onInput(e, input, false));
     this.uiContents.on('context-menu', (_e, params) => { void this.showUiMenu(params); });
 
-    this.win.on('resize', () => this.layout());
+    this.win.on('resize', () => {
+      this.layout();
+      this.ctx.session.markDirty();
+    });
+    this.win.on('move', () => this.ctx.session.markDirty());
     this.win.on('focus', () => { BrowserWindowController.lastFocused = this; });
-    this.win.on('close', () => this.recordClosedWindow());
+    // Windows va a cerrar la sesión o apagarse: se guardan todas las ventanas antes de que se cierren una por una
+    this.win.on('query-session-end', () => this.ctx.session.finalSave());
+    this.win.on('close', () => {
+      // Si quedan otras ventanas, esta va a "cerradas recientemente"; si es la última, queda como sesión guardada.
+      if (BrowserWindowController.all.size > 1) this.recordClosedWindow();
+      this.ctx.session.windowClosing(this);
+      this.closing = true;
+    });
     this.win.on('closed', () => {
+      this.closing = true;
       BrowserWindowController.all.delete(this);
       for (const tab of this.tabs) {
         this.attached.get(tab)?.dispose();
@@ -116,6 +173,7 @@ export class BrowserWindowController {
       this.tabs = [];
       this.attached.clear();
       if (!this.uiContents.isDestroyed()) this.uiContents.close();
+      this.ctx.session.markDirty();
     });
 
     BrowserWindowController.all.add(this);
@@ -124,13 +182,12 @@ export class BrowserWindowController {
     if (opts.tabs?.length) {
       opts.tabs.forEach((t, i) => this.insertTab(t, i, i === 0));
     } else if (opts.restore?.tabs.length) {
-      opts.restore.tabs.forEach((s, i) => {
-        const t = new Tab(ctx.profile);
-        this.insertTab(t, i, i === opts.restore!.active);
-        t.restore(s);
-      });
+      // Se agregan todas sin activar (quedan sin cargar) y después se activa, y carga, solo la que estaba activa
+      const active = Math.max(0, Math.min(opts.restore.active, opts.restore.tabs.length - 1));
+      opts.restore.tabs.forEach((s, i) => this.insertTab(new Tab(ctx.profile, { pending: s }), i, false, 'page', false));
+      this.activate(this.tabs[active]!, { focus: 'page' });
     } else {
-      const t = new Tab(ctx.profile);
+      const t = this.createTab(opts.url);
       this.insertTab(t, 0, true);
       t.loadURL(opts.url ?? 'about:blank', opts.referrer);
     }
@@ -144,24 +201,29 @@ export class BrowserWindowController {
 
   // ---------------------------------------------------------------- pestañas
 
+  private createTab(url: string | undefined, opts: { adopt?: BrowserWindowConstructorOptions; openerId?: number | null } = {}): Tab {
+    const kind: TabKind = url && internalPageOf(url) ? 'internal' : 'web';
+    return new Tab(this.ctx.profile, { kind, adopt: opts.adopt, openerId: opts.openerId ?? null });
+  }
+
   /**
    * Agrega una pestaña a esta ventana en la posición indicada. `focus`: 'auto' enfoca la barra de direcciones si la
    * pestaña está vacía y la página si no; 'page' enfoca siempre la página (contenido que todavía no empezó a cargar).
    */
-  insertTab(tab: Tab, index: number, activate: boolean, focus: FocusMode = 'auto'): void {
+  insertTab(tab: Tab, index: number, activate: boolean, focus: FocusMode = 'auto', activateIfFirst = true): void {
     const i = Math.max(0, Math.min(index, this.tabs.length));
     this.tabs.splice(i, 0, tab);
     this.attach(tab);
     // Debajo de la interfaz (índice 0 = al fondo)
     this.win.contentView.addChildView(tab.view, 0);
     tab.view.setVisible(false);
-    if (activate || !this.activeTab) this.activate(tab, { focus });
+    if (activate || (!this.activeTab && activateIfFirst)) this.activate(tab, { focus });
     else this.queueState();
   }
 
   /** Crea una pestaña nueva. Por defecto al final y activa. */
   newTab(opts: { url?: string; referrer?: Referrer; index?: number; activate?: boolean; openerId?: number | null; adopt?: BrowserWindowConstructorOptions } = {}): Tab {
-    const tab = new Tab(this.ctx.profile, { adopt: opts.adopt, openerId: opts.openerId ?? null });
+    const tab = this.createTab(opts.url, { adopt: opts.adopt, openerId: opts.openerId });
     const hasContent = !!opts.adopt || (!!opts.url && opts.url !== 'about:blank');
     this.insertTab(tab, opts.index ?? this.tabs.length, opts.activate ?? true, hasContent ? 'page' : 'auto');
     if (!opts.adopt) tab.loadURL(opts.url ?? 'about:blank', opts.referrer);
@@ -171,6 +233,51 @@ export class BrowserWindowController {
   /** Pestaña hija de `opener` (enlaces): a la derecha de su pestaña de origen y de las hijas anteriores. */
   private childIndex(opener: Tab): number {
     return childInsertIndex(this.tabs.map((t) => t.openerId), this.tabs.indexOf(opener), opener.id);
+  }
+
+  /**
+   * Navega una pestaña a lo que escribió el usuario. Las páginas internas y las web usan sesiones distintas: si hay
+   * que pasar de una a otra, la pestaña se reemplaza por una nueva en el mismo lugar.
+   */
+  navigateTab(tab: Tab, input: string, typed = true): boolean {
+    const resolved = resolveInput(input, this.ctx.profile.searchTemplate);
+    if (!resolved) return false;
+    this.openResolved(tab, resolved, typed);
+    return true;
+  }
+
+  private openResolved(tab: Tab, resolved: ResolvedInput, typed: boolean): void {
+    const kind: TabKind = resolved.kind === 'internal' ? 'internal' : 'web';
+    const target = kind === tab.kind ? tab : this.replaceTab(tab, kind);
+    target.openResolved(resolved, typed);
+    if (target === this.activeTab) target.webContents.focus();
+  }
+
+  /** Reemplaza una pestaña por otra vacía de otro tipo, en la misma posición. */
+  private replaceTab(old: Tab, kind: TabKind): Tab {
+    const index = this.tabs.indexOf(old);
+    const wasActive = old === this.activeTab;
+    const tab = new Tab(this.ctx.profile, { kind, openerId: old.openerId });
+    this.insertTab(tab, index, wasActive, 'page');
+    this.removeTab(old, { record: false, destroy: true });
+    return tab;
+  }
+
+  /** Abre una página interna: si ya está abierta en esta ventana, la muestra; si no, en una pestaña nueva. */
+  openInternalPage(page: InternalPage): void {
+    const existing = this.tabs.find((t) => t.internalPage === page);
+    if (existing) return this.activate(existing);
+    this.newTab({ url: internalUrl(page), index: this.childIndex(this.activeTab), openerId: this.activeTab.id });
+  }
+
+  /** Abre una dirección elegida en una página interna (historial). */
+  openFromInternal(source: Tab, url: string, where: 'current' | 'new-tab' | 'background-tab'): void {
+    if (!/^(https?|file):/i.test(url)) return;
+    if (where === 'current') {
+      this.openResolved(source, { kind: 'url', url, upgradedToHttps: false }, false);
+      return;
+    }
+    this.newTab({ url, index: this.childIndex(source), activate: where === 'new-tab', openerId: source.id });
   }
 
   private attach(tab: Tab): void {
@@ -215,6 +322,7 @@ export class BrowserWindowController {
     const previous = this.activeTab;
     this.activeTab = tab;
     if (previous && previous !== tab && this.tabs.includes(previous)) previous.view.setVisible(false);
+    tab.ensureLoaded(); // pestaña restaurada: se carga recién ahora
     tab.view.setVisible(true);
     this.layout();
     this.queueState();
@@ -235,8 +343,8 @@ export class BrowserWindowController {
   private removeTab(tab: Tab, opts: { record: boolean; destroy: boolean }): void {
     const index = this.tabs.indexOf(tab);
     if (index < 0) return;
-    if (opts.record && !this.closingAll) {
-      this.ctx.closedTabs.push({ kind: 'tab', windowId: this.id, index, tab: tab.snapshot() });
+    if (opts.record && !this.closing) {
+      this.ctx.closedTabs.push({ kind: 'tab', windowId: this.id, index, tab: trimSnapshot(tab.snapshot()) });
     }
     const wasActive = tab === this.activeTab;
     const countBefore = this.tabs.length;
@@ -278,7 +386,7 @@ export class BrowserWindowController {
   }
 
   duplicate(tab: Tab): Tab {
-    const copy = new Tab(this.ctx.profile, { openerId: tab.id });
+    const copy = new Tab(this.ctx.profile, { kind: tab.kind, openerId: tab.id });
     this.insertTab(copy, this.tabs.indexOf(tab) + 1, true, 'page');
     copy.restore(tab.snapshot());
     return copy;
@@ -288,14 +396,13 @@ export class BrowserWindowController {
     const entry = this.ctx.closedTabs.pop();
     if (!entry) return;
     if (entry.kind === 'window') {
-      new BrowserWindowController(this.ctx, { restore: { tabs: entry.tabs, active: entry.active } });
+      new BrowserWindowController(this.ctx, { restore: { tabs: entry.tabs.map(savedFromSnapshot), active: entry.active } });
       return;
     }
     // Vuelve a su ventana si sigue abierta; si no, a esta.
     const target = [...BrowserWindowController.all].find((w) => w.id === entry.windowId) ?? this;
-    const tab = new Tab(this.ctx.profile);
+    const tab = new Tab(this.ctx.profile, { pending: savedFromSnapshot(entry.tab) });
     target.insertTab(tab, entry.index, true, 'page');
-    tab.restore(entry.tab);
     if (target !== this) target.focus();
   }
 
@@ -316,12 +423,20 @@ export class BrowserWindowController {
     if (this.win.isDestroyed()) return;
     const { width, height } = this.win.getContentBounds();
     const tab = this.activeTab;
-    const top = chromeHeight({ notice: !!tab?.notice, find: !!tab?.findOpen });
-    this.ui.setBounds({ x: 0, y: 0, width, height: top });
+    const top = chromeHeight({ notice: !!tab?.notice, find: !!tab?.findOpen, permission: !!tab?.hasPermissionPrompt });
+    this.ui.setBounds({ x: 0, y: 0, width, height: Math.min(height, top + this.overlayHeight) });
     tab?.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
   }
 
+  setOverlayHeight(px: number): void {
+    const h = Math.max(0, Math.min(Math.round(px), MAX_OVERLAY_HEIGHT));
+    if (h === this.overlayHeight) return;
+    this.overlayHeight = h;
+    this.layout();
+  }
+
   queueState(): void {
+    this.ctx.session.markDirty();
     if (this.stateQueued) return;
     this.stateQueued = true;
     setImmediate(() => {
@@ -333,7 +448,7 @@ export class BrowserWindowController {
   private sendState(): void {
     if (this.win.isDestroyed() || !this.activeTab) return;
     this.layout();
-    const state: WindowState = { tabs: this.tabs.map((t) => t.state), activeTabId: this.activeTab.id };
+    const state: WindowState = { tabs: this.tabs.map((t) => t.state), activeTabId: this.activeTab.id, searchEngine: this.ctx.profile.searchEngineName };
     const active = state.tabs.find((t) => t.id === state.activeTabId)!;
     const blank = !active.url || active.url === 'about:blank';
     this.win.setTitle(`${!blank && active.title ? active.title : 'Nueva pestaña'} — Callisto`);
@@ -353,7 +468,7 @@ export class BrowserWindowController {
     this.uiContents.send(IPC.state, state);
   }
 
-  /** Favicon que trajo una pestaña movida desde otra ventana. */
+  /** Favicon que trajo una pestaña movida desde otra ventana, o guardado de la sesión anterior. */
   private findFavicon(key: string): string | undefined {
     for (const w of BrowserWindowController.all) {
       const d = w.favicons.get(key);
@@ -362,7 +477,9 @@ export class BrowserWindowController {
         return d;
       }
     }
-    return undefined;
+    const saved = this.ctx.profile.favicons.cached(key);
+    if (saved) this.favicons.set(key, saved);
+    return saved;
   }
 
   static refreshAll(): void {
@@ -397,9 +514,21 @@ export class BrowserWindowController {
     this.win.focus();
   }
 
+  /** Estado para guardar en la sesión. */
+  saved(): SavedWindow {
+    return {
+      bounds: this.win.getNormalBounds(),
+      maximized: this.win.isMaximized(),
+      tabs: this.tabs.map((t) => {
+        const s = t.saved();
+        return { ...s, ...trimSnapshot(s) };
+      }),
+      active: Math.max(0, this.tabs.indexOf(this.activeTab)),
+    };
+  }
+
   private recordClosedWindow(): void {
-    this.closingAll = true;
-    const restorable = this.tabs.map((t) => t.snapshot());
+    const restorable = this.tabs.map((t) => trimSnapshot(t.snapshot()));
     if (restorable.length > 1) {
       this.ctx.closedTabs.push({ kind: 'window', tabs: restorable, active: Math.max(0, this.tabs.indexOf(this.activeTab)) });
     } else if (restorable.length === 1) {
@@ -438,6 +567,7 @@ export class BrowserWindowController {
       case 'select-last-tab': return this.activate(this.tabs[this.tabs.length - 1]!);
       case 'reopen-closed-tab': return this.reopenClosed();
       case 'duplicate-tab': this.duplicate(tab); return;
+      case 'history': return this.openInternalPage('history');
       case 'find': return this.openFind();
       case 'find-next':
       case 'find-prev':
@@ -454,11 +584,29 @@ export class BrowserWindowController {
     }
   }
 
-  // ---------------------------------------------------------------- menús contextuales (nativos)
+  // ---------------------------------------------------------------- menús (nativos)
 
   private popup(template: MenuItemConstructorOptions[]): void {
     if (template.length === 0) return;
     Menu.buildFromTemplate(template).popup({ window: this.win });
+  }
+
+  /** Menú "Configuración y más" (botón ⋯ de la barra). */
+  showAppMenu(): void {
+    this.popup(
+      appMenuTemplate(
+        { zoomPercent: this.activeTab.state.zoomPercent },
+        {
+          newTab: () => this.newTab(),
+          newWindow: () => { new BrowserWindowController(this.ctx); },
+          history: () => this.openInternalPage('history'),
+          zoom: (d) => this.activeTab.zoom(d),
+          find: () => this.openFind(),
+          settings: () => this.openInternalPage('settings'),
+          closeWindow: () => this.win.close(),
+        },
+      ),
+    );
   }
 
   showTabMenu(tab: Tab | null): void {
@@ -483,10 +631,12 @@ export class BrowserWindowController {
 
   private showPageMenu(tab: Tab, params: ContextMenuParams): void {
     const wc = tab.webContents;
+    const profile = this.ctx.profile;
     this.popup(
       pageMenuTemplate(params, {
         canGoBack: wc.navigationHistory.canGoBack(),
         canGoForward: wc.navigationHistory.canGoForward(),
+        searchEngineName: profile.searchEngineName,
         openInNewTab: (url, referrer) => {
           if (!this.tabs.includes(tab)) return;
           this.newTab({ url, referrer, index: this.childIndex(tab), activate: false, openerId: tab.id });
@@ -496,7 +646,7 @@ export class BrowserWindowController {
         copyImageAt: (x, y) => wc.copyImageAt(x, y),
         searchFor: (text) => {
           if (!this.tabs.includes(tab)) return;
-          this.newTab({ url: searchUrl(text.slice(0, 1000)), index: this.childIndex(tab), activate: true, openerId: tab.id });
+          this.newTab({ url: searchUrl(text.slice(0, 1000), profile.searchTemplate), index: this.childIndex(tab), activate: true, openerId: tab.id });
         },
         edit: (cmd) => runEdit(wc, cmd),
         replaceMisspelling: (word) => wc.replaceMisspelling(word),
@@ -512,17 +662,15 @@ export class BrowserWindowController {
     if (!params.isEditable) return; // el resto de la interfaz tiene sus propios menús (pestañas) o ninguno
     const text = (await clipboard.readText().catch(() => '')).trim().slice(0, 8192);
     if (this.win.isDestroyed()) return;
-    const resolved = text ? resolveInput(text) : null;
+    const resolved = text ? resolveInput(text, this.ctx.profile.searchTemplate) : null;
     this.popup(
       uiEditMenuTemplate(params, {
         edit: (cmd) => runEdit(this.uiContents, cmd),
         clipboardText: resolved ? text : null,
-        clipboardIsUrl: resolved?.kind === 'url',
+        clipboardIsUrl: resolved?.kind === 'url' || resolved?.kind === 'internal',
         // La barra de direcciones es un <input type="text">; el campo de búsqueda en la página es type="search"
         isAddressBar: params.formControlType === 'input-text',
-        pasteAndGo: (t) => {
-          if (this.activeTab.navigate(t)) this.activeTab.webContents.focus();
-        },
+        pasteAndGo: (t) => { this.navigateTab(this.activeTab, t); },
       }),
     );
   }

@@ -1,11 +1,15 @@
 // Interpretación de lo que el usuario escribe en la barra de direcciones: ¿URL o búsqueda?
 // Lógica pura (sin Electron) para poder probarla con tests unitarios.
 
+import { internalPageOf, internalUrl } from './internal-pages';
+
 export const DEFAULT_SEARCH_TEMPLATE = 'https://www.google.com/search?q=%s';
 
 export type ResolvedInput =
   | { kind: 'url'; url: string; /** https elegido por Callisto (no escrito): se puede reintentar con http si falla la conexión */ upgradedToHttps: boolean }
-  | { kind: 'search'; url: string; query: string };
+  | { kind: 'search'; url: string; query: string }
+  /** Página interna de Callisto (historial, configuración): se abre en una pestaña interna, nunca con la sesión web. */
+  | { kind: 'internal'; url: string };
 
 const NAVIGABLE_SCHEMES = new Set(['http:', 'https:', 'file:']);
 
@@ -44,6 +48,10 @@ export function resolveInput(raw: string, template = DEFAULT_SEARCH_TEMPLATE): R
   const text = raw.trim();
   if (!text) return null;
   if (text.toLowerCase() === 'about:blank') return { kind: 'url', url: 'about:blank', upgradedToHttps: false };
+
+  // Solo las páginas internas conocidas; cualquier otra dirección callisto:// (p. ej. la interfaz) es una búsqueda
+  const page = internalPageOf(text);
+  if (page && /^callisto:\/\/[a-z]+\/?$/i.test(text)) return { kind: 'internal', url: internalUrl(page) };
 
   // Ruta de Windows: C:\carpeta\archivo.html
   if (/^[a-zA-Z]:[\\/]/.test(text)) {

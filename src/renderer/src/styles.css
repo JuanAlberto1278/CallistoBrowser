@@ -52,13 +52,15 @@ html, body, #root {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  /* Transparente: debajo de la interfaz, cuando el panel de sugerencias se superpone, se ve la página */
+  background: transparent;
   color: var(--fg);
   font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   user-select: none;
 }
 
 .chrome { display: flex; flex-direction: column; height: 100%; }
+.toolbar, .loading-bar, .find-bar, .permission-bar { background: var(--bg); }
 
 .toolbar {
   display: flex;
@@ -86,6 +88,7 @@ html, body, #root {
 .icon-button.small { width: 26px; height: 26px; }
 
 .address-bar {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 34px;
@@ -124,6 +127,7 @@ html, body, #root {
 }
 .security.secure { color: var(--secure); }
 .security.insecure, .security.error { color: var(--insecure); }
+.security.internal { color: var(--focus); }
 .security-label { font-size: 12px; font-weight: 600; padding-right: 6px; border-right: 1px solid var(--field-border); }
 
 .loading-bar {
@@ -326,3 +330,60 @@ html, body, #root {
 }
 .find-field input::-webkit-search-cancel-button { display: none; }
 .find-status { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- sugerencias de la barra de direcciones */
+
+.suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: -1px;
+  right: -1px;
+  z-index: 10;
+  padding: 4px 0;
+  border-radius: 8px;
+  background: var(--field);
+  border: 1px solid var(--field-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.suggestion {
+  display: grid;
+  grid-template-columns: 16px minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+.suggestion.selected { background: var(--hover); }
+.suggestion-icon { width: 16px; height: 16px; display: grid; place-items: center; color: var(--muted); }
+.suggestion-icon img { width: 16px; height: 16px; object-fit: contain; }
+.suggestion-text { overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+.suggestion-detail { overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 12px; }
+
+/* ---------------------------------------------------------------- pedido de permiso */
+
+.permission-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.permission-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.permission-remember { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--muted); }
+
+.btn {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid var(--field-border);
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--focus); border-color: var(--focus); color: #fff; }
+.btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

@@ -34,11 +34,47 @@ export interface TabState {
   find: FindState | null;
   /** Aviso propio de la pestaña (descarga bloqueada, página que dejó de funcionar…). */
   notice: Notice | null;
+  /** Pedido de permiso del sitio esperando la decisión del usuario. */
+  permission: PermissionPrompt | null;
+}
+
+export type PromptPermission = 'camera' | 'microphone' | 'geolocation' | 'notifications';
+
+export interface PermissionPrompt {
+  id: number;
+  /** Sitio que pide (https://sitio). */
+  origin: string;
+  permissions: PromptPermission[];
+  /** Texto listo para mostrar: "usar tu cámara y tu micrófono". */
+  phrase: string;
+}
+
+/** Sugerencia de la barra de direcciones. */
+export interface Suggestion {
+  kind: 'search' | 'url' | 'history';
+  /** Línea principal (título, dirección o texto buscado). */
+  text: string;
+  /** Línea secundaria (dirección o "Buscar en Google"). */
+  detail: string;
+  /** Adónde lleva. */
+  url: string;
+  /** Favicon como URL data: (historial), o null. */
+  icon: string | null;
+  /** Texto que se muestra en la barra al seleccionarla con las flechas. */
+  fill?: string;
+}
+
+export interface SuggestResult {
+  items: Suggestion[];
+  /** Autocompletado en línea: el resto del nombre del sitio ("gle.com" para "goo") y su dirección. */
+  inline: { completion: string; url: string } | null;
 }
 
 export interface WindowState {
   tabs: TabState[];
   activeTabId: number;
+  /** Nombre del buscador configurado (para los textos de la barra). */
+  searchEngine: string;
 }
 
 export const IPC = {
@@ -58,6 +94,10 @@ export const IPC = {
   find: 'callisto:find',
   closeFind: 'callisto:close-find',
   resetZoom: 'callisto:reset-zoom',
+  suggest: 'callisto:suggest',
+  overlayHeight: 'callisto:overlay-height',
+  respondPermission: 'callisto:respond-permission',
+  appMenu: 'callisto:app-menu',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
@@ -67,6 +107,8 @@ export const IPC = {
 
 export const MAX_ADDRESS_INPUT = 8192;
 export const MAX_FIND_INPUT = 1000;
+/** Alto máximo del panel de sugerencias que se superpone a la página. */
+export const MAX_OVERLAY_HEIGHT = 600;
 
 export interface CallistoUiApi {
   navigate(input: string): void;
@@ -86,6 +128,13 @@ export interface CallistoUiApi {
   find(query: string, forward: boolean, newSession: boolean): void;
   closeFind(): void;
   resetZoom(): void;
+  /** Sugerencias para lo que se está escribiendo en la barra de direcciones. */
+  suggest(text: string): Promise<SuggestResult>;
+  /** Alto del panel de sugerencias abierto (0 = cerrado): la interfaz se extiende sobre la página mientras tanto. */
+  setOverlayHeight(px: number): void;
+  respondPermission(id: number, allow: boolean, remember: boolean): void;
+  /** Menú "Configuración y más". */
+  showAppMenu(): void;
   onState(cb: (state: WindowState) => void): void;
   /** Favicons nuevos: clave -> URL data: de la imagen (la interfaz los guarda). */
   onFavicons(cb: (favicons: Record<string, string>) => void): void;
