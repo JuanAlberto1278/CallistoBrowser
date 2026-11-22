@@ -71,3 +71,9 @@ export const PlayIcon = () => (
 export const RetryIcon = () => (
   <svg {...base} width={14} height={14}><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3" /></svg>
 );
+export const StarIcon = ({ filled }: { filled?: boolean }) => (
+  <svg {...base} fill={filled ? 'currentColor' : 'none'}><path d="M8 2.2 9.8 6l4.1.5-3 2.8.8 4.1L8 11.4l-3.7 2 .8-4.1-3-2.8L6.2 6z" /></svg>
+);
+export const EditIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M10.5 2.5 13.5 5.5 6 13H3v-3z" /></svg>
+);

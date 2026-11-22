@@ -20,6 +20,9 @@ export type ShortcutAction =
   | 'duplicate-tab'
   | 'history'
   | 'downloads'
+  | 'bookmark-page'
+  | 'toggle-bookmarks-bar'
+  | 'bookmarks'
   | 'find'
   | 'find-next'
   | 'find-prev'
@@ -62,6 +65,9 @@ export function matchShortcut(input: Input, ctx: { fromPage: boolean; isLoading:
   if (ctrl && shift && k === 'k') return 'duplicate-tab';
   if (ctrl && !shift && k === 'h') return 'history';
   if (ctrl && !shift && k === 'j') return 'downloads';
+  if (ctrl && !shift && k === 'd') return 'bookmark-page';
+  if (ctrl && shift && k === 'b') return 'toggle-bookmarks-bar';
+  if (ctrl && shift && k === 'o') return 'bookmarks';
   if ((ctrl && !shift && k === 'Tab') || (ctrl && !shift && k === 'PageDown')) return 'next-tab';
   if ((ctrl && shift && k === 'Tab') || (ctrl && !shift && k === 'PageUp')) return 'prev-tab';
   if (ctrl && !shift) {

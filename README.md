@@ -2,7 +2,7 @@
 
 Navegador web de escritorio para Windows, basado en Electron (Chromium).
 
-**Versión actual: V0.5, descargas autorizadas.** Nada se guarda sin tu autorización; progreso, pausar/reanudar/cancelar, página de descargas y página de nueva pestaña con tus sitios más visitados. Sobre V0.4 (historial, sesión, permisos, configuración), V0.3 (pestañas) y V0.2 (navegación y seguridad).
+**Versión actual: V0.6, favoritos.** Estrella (Ctrl+D), barra de favoritos, carpetas, administrador y reorganización, sobre V0.5 (descargas autorizadas y nueva pestaña), V0.4 (historial, sesión, permisos, configuración), V0.3 (pestañas) y V0.2 (navegación y seguridad).
 
 ## Comandos
 
@@ -20,5 +20,6 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 - [03 — V0.3: pestañas](docs/03-v0.3-pestanas.md)
 - [04 — V0.4: persistencia e historial](docs/04-v0.4-persistencia.md)
 - [05 — V0.5: descargas autorizadas y nueva pestaña](docs/05-v0.5-descargas.md)
+- [06 — V0.6: favoritos](docs/06-v0.6-favoritos.md)
 
 Las pruebas de concepto de V0.1 están en [`spikes/`](spikes/README.md), un proyecto separado.

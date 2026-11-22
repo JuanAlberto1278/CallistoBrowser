@@ -67,6 +67,24 @@ export function SettingsPage() {
         </label>
       </section>
 
+      <section className="card" aria-labelledby="s-appearance">
+        <h2 id="s-appearance">Barra de favoritos</h2>
+        <div className="row">
+          <label htmlFor="bar">Mostrar la barra de favoritos</label>
+          <select id="bar" data-testid="settings-bookmarks-bar" value={settings.bookmarksBar} onChange={(e) => update({ bookmarksBar: e.target.value as Settings['bookmarksBar'] })}>
+            <option value="always">Siempre</option>
+            <option value="newtab">Solo en las pestañas nuevas</option>
+            <option value="never">Nunca</option>
+          </select>
+        </div>
+        <div className="row">
+          <span className="muted">Agregá, ordená y organizá tus favoritos en carpetas.</span>
+          <button className="btn" onClick={() => api.openPage('bookmarks')}>
+            Administrar favoritos
+          </button>
+        </div>
+      </section>
+
       <section className="card" aria-labelledby="s-downloads">
         <h2 id="s-downloads">Descargas</h2>
         <div className="row">

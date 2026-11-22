@@ -7,7 +7,9 @@ import { matchShortcut, type ShortcutAction } from './shortcuts';
 import type { ClosedTabs, TabSnapshot } from './closed-tabs';
 import { appMenuTemplate, pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
 import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
-import { IPC, MAX_OVERLAY_HEIGHT, type DownloadsUiState, type WindowState } from '../shared/ipc';
+import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type WindowState } from '../shared/ipc';
+import { BAR_FOLDER_ID, OTHER_FOLDER_ID, isBookmarkableUrl, type BookmarkEditorState, type BookmarkNode } from '../shared/bookmarks';
+import { bookmarkItemMenu, bookmarksSubmenu, folderMenu, nodesMenu } from './bookmark-menus';
 import { sanitizeFileName, siteOf } from '../shared/downloads';
 import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
@@ -124,6 +126,8 @@ export class BrowserWindowController {
   private overlayHeight = 0;
   /** Panel de descargas abierto (debajo del botón de descargas). */
   private downloadsPanelOpen = false;
+  /** Editor de favoritos abierto (bajo la estrella o bajo la barra). */
+  private bookmarkEditor: BookmarkEditorState | null = null;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
     this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
@@ -434,7 +438,7 @@ export class BrowserWindowController {
     if (this.win.isDestroyed()) return;
     const { width, height } = this.win.getContentBounds();
     const tab = this.activeTab;
-    const top = chromeHeight({ notice: !!tab?.notice, find: !!tab?.findOpen, permission: !!tab?.hasPermissionPrompt });
+    const top = chromeHeight({ notice: !!tab?.notice, find: !!tab?.findOpen, permission: !!tab?.hasPermissionPrompt, bookmarksBar: this.barVisible() });
     // La página de nueva pestaña la dibuja la interfaz: ocupa toda la ventana
     const uiHeight = tab?.showsNewTabPage ? height : Math.min(height, top + this.overlayHeight);
     this.ui.setBounds({ x: 0, y: 0, width, height: uiHeight });
@@ -459,15 +463,19 @@ export class BrowserWindowController {
   }
 
   private sendState(): void {
-    if (this.win.isDestroyed() || !this.activeTab) return;
+    // La pestaña activa ya no es de esta ventana: la ventana se está cerrando (p. ej. un popup que se cerró solo)
+    if (this.win.isDestroyed() || !this.activeTab || !this.tabs.includes(this.activeTab)) return;
     this.layout();
     const state: WindowState = {
       tabs: this.tabs.map((t) => t.state),
       activeTabId: this.activeTab.id,
       searchEngine: this.ctx.profile.searchEngineName,
       downloads: this.downloadsState(),
+      bookmarks: this.bookmarksState(),
     };
-    const active = state.tabs.find((t) => t.id === state.activeTabId)!;
+    // La ventana se está cerrando (su última pestaña ya salió, p. ej. un popup que se cerró solo): no hay nada que mostrar
+    const active = state.tabs.find((t) => t.id === state.activeTabId);
+    if (!active) return;
     const blank = !active.url || active.url === 'about:blank';
     this.win.setTitle(`${!blank && active.title ? active.title : 'Nueva pestaña'} — Callisto`);
     if (!this.uiReady || this.uiContents.isDestroyed()) return;
@@ -498,6 +506,242 @@ export class BrowserWindowController {
     const saved = this.ctx.profile.favicons.cached(key);
     if (saved) this.favicons.set(key, saved);
     return saved;
+  }
+
+  // ---------------------------------------------------------------- favoritos
+
+  /** ¿Se muestra la barra de favoritos? (siempre, nunca o solo en pestañas nuevas, según la configuración) */
+  private barVisible(): boolean {
+    const setting = this.ctx.profile.settings.bookmarksBar;
+    return setting === 'always' || (setting === 'newtab' && !!this.activeTab?.showsNewTabPage);
+  }
+
+  private iconFor(url: string | null): string | null {
+    if (!url) return null;
+    const iconUrl = this.ctx.profile.history.iconUrlFor(url);
+    return iconUrl ? (this.ctx.profile.favicons.cached(iconUrl) ?? null) : null;
+  }
+
+  private bookmarksState(): BookmarksUiState {
+    const store = this.ctx.profile.bookmarks;
+    const visible = this.barVisible();
+    const url = this.activeTab.url;
+    const starrable = isBookmarkableUrl(url) && this.activeTab.state.security !== 'error';
+    return {
+      barVisible: visible,
+      bar: visible ? store.children(BAR_FOLDER_ID).map((n) => ({ ...n, icon: this.iconFor(n.url) })) : [],
+      starred: starrable && !!store.findByUrl(url),
+      starrable,
+      editor: this.bookmarkEditor,
+    };
+  }
+
+  private bookmarksChanged(): void {
+    this.ctx.profile.emit('bookmarks-changed');
+  }
+
+  /** Carpetas donde se puede guardar `node` (una carpeta no puede ir dentro de sí misma). */
+  private folderOptions(node?: BookmarkNode): BookmarkEditorState['folders'] {
+    const all = this.ctx.profile.bookmarks.folders();
+    if (node?.kind !== 'folder') return all;
+    const i = all.findIndex((f) => f.id === node.id);
+    if (i < 0) return all;
+    let end = i + 1;
+    while (end < all.length && all[end]!.depth > all[i]!.depth) end++;
+    return [...all.slice(0, i), ...all.slice(end)];
+  }
+
+  /** Estrella / Ctrl+D: agrega la página (a la última carpeta usada) o abre el editor si ya es favorito. */
+  toggleStar(): void {
+    const tab = this.activeTab;
+    const url = tab.url;
+    if (!isBookmarkableUrl(url) || tab.state.security === 'error') return;
+    const store = this.ctx.profile.bookmarks;
+    const existing = store.findByUrl(url);
+    if (existing) {
+      this.openBookmarkEditor(existing.id, { justAdded: false, anchor: 'star' });
+      return;
+    }
+    const last = this.ctx.profile.kv.get<number>('bookmarks.lastFolder');
+    const parent = last && store.get(last)?.kind === 'folder' ? last : BAR_FOLDER_ID;
+    const id = store.addUrl(parent, tab.state.title || url, url);
+    this.bookmarksChanged();
+    this.openBookmarkEditor(id, { justAdded: true, anchor: 'star' });
+  }
+
+  openBookmarkEditor(id: number, opts: { justAdded: boolean; anchor: 'star' | 'bar' }): void {
+    const node = this.ctx.profile.bookmarks.get(id);
+    if (!node || node.parentId === null) return;
+    this.bookmarkEditor = {
+      mode: 'edit',
+      id,
+      kind: node.kind,
+      title: node.title,
+      url: node.url ?? '',
+      parentId: node.parentId,
+      folders: this.folderOptions(node),
+      justAdded: opts.justAdded,
+      anchor: opts.anchor,
+      error: null,
+    };
+    this.queueState();
+  }
+
+  /** "Agregar página…" / "Agregar carpeta…": editor vacío (la página se completa con la pestaña activa). */
+  openNewBookmarkEditor(kind: 'url' | 'folder', parentId = BAR_FOLDER_ID): void {
+    const tab = this.activeTab;
+    const usable = isBookmarkableUrl(tab.url);
+    this.bookmarkEditor = {
+      mode: kind === 'url' ? 'new-page' : 'new-folder',
+      id: null,
+      kind,
+      title: kind === 'url' && usable ? tab.state.title : '',
+      url: kind === 'url' && usable ? tab.url : '',
+      parentId,
+      folders: this.folderOptions(),
+      justAdded: false,
+      anchor: 'bar',
+      error: null,
+    };
+    this.queueState();
+  }
+
+  bookmarkEditorSave(values: { title: string; url: string; parentId: number }): void {
+    const ed = this.bookmarkEditor;
+    if (!ed) return;
+    const store = this.ctx.profile.bookmarks;
+    try {
+      if (ed.mode === 'edit' && ed.id !== null) {
+        store.update(ed.id, ed.kind === 'url' ? { title: values.title, url: values.url.trim() } : { title: values.title });
+        if (values.parentId !== ed.parentId) store.move(ed.id, values.parentId);
+      } else if (ed.mode === 'new-page') {
+        store.addUrl(values.parentId, values.title, normalizeBookmarkUrl(values.url));
+      } else {
+        store.addFolder(values.parentId, values.title);
+      }
+    } catch (e) {
+      this.bookmarkEditor = { ...ed, ...values, error: e instanceof Error ? e.message : 'No se pudo guardar.' };
+      this.queueState();
+      return;
+    }
+    if (ed.kind === 'url') this.ctx.profile.kv.set('bookmarks.lastFolder', values.parentId);
+    this.bookmarkEditor = null;
+    this.bookmarksChanged();
+  }
+
+  /** "Quitar" en el editor: borra el favorito (o descarta uno nuevo). */
+  bookmarkEditorRemove(): void {
+    const ed = this.bookmarkEditor;
+    this.bookmarkEditor = null;
+    if (ed?.mode === 'edit' && ed.id !== null) {
+      void this.removeBookmark(ed.id);
+      return;
+    }
+    this.queueState();
+  }
+
+  closeBookmarkEditor(): void {
+    if (!this.bookmarkEditor) return;
+    this.bookmarkEditor = null;
+    this.queueState();
+  }
+
+  /** Borra un favorito; una carpeta con contenido, después de confirmar. */
+  async removeBookmark(id: number): Promise<void> {
+    const store = this.ctx.profile.bookmarks;
+    const node = store.get(id);
+    if (!node || node.parentId === null) return;
+    if (node.kind === 'folder') {
+      const count = store.descendantCount(id);
+      if (count > 0) {
+        const res = await dialog.showMessageBox(this.win, {
+          type: 'warning',
+          title: 'Eliminar carpeta',
+          message: `¿Eliminar la carpeta «${node.title}» y todo lo que contiene (${count} ${count === 1 ? 'elemento' : 'elementos'})?`,
+          buttons: ['Eliminar', 'Cancelar'],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        });
+        if (res.response !== 0) return;
+      }
+    }
+    store.remove(id);
+    this.bookmarksChanged();
+  }
+
+  moveBookmark(id: number, parentId: number, index: number): void {
+    try {
+      this.ctx.profile.bookmarks.move(id, parentId, index);
+      this.bookmarksChanged();
+    } catch {
+      /* movimiento no válido (p. ej. una carpeta dentro de sí misma): se ignora */
+    }
+  }
+
+  /** Abre una dirección guardada (favorito, menú). */
+  openUrl(url: string, where: OpenWhere): void {
+    if (!isBookmarkableUrl(url)) return;
+    if (where === 'current') {
+      this.navigateTab(this.activeTab, url, false);
+    } else if (where === 'new-window') {
+      new BrowserWindowController(this.ctx, { url });
+    } else {
+      this.newTab({ url, index: this.tabs.indexOf(this.activeTab) + 1, activate: where === 'new-tab', openerId: this.activeTab.id });
+    }
+  }
+
+  openBookmark(id: number, where: OpenWhere): void {
+    const node = this.ctx.profile.bookmarks.get(id);
+    if (node?.kind === 'url' && node.url) this.openUrl(node.url, where);
+  }
+
+  private openAllBookmarks(nodes: BookmarkNode[]): void {
+    for (const n of nodes) if (n.url) this.openUrl(n.url, 'background-tab');
+  }
+
+  private folderActions() {
+    return { open: (n: BookmarkNode, where: OpenWhere) => n.url && this.openUrl(n.url, where), openAll: (nodes: BookmarkNode[]) => this.openAllBookmarks(nodes) };
+  }
+
+  showBookmarkFolder(id: number): void {
+    const node = this.ctx.profile.bookmarks.get(id);
+    if (node?.kind !== 'folder') return;
+    this.popup(folderMenu(id, this.ctx.profile.bookmarks, this.folderActions()));
+  }
+
+  showBookmarkOverflow(fromIndex: number): void {
+    const items = this.ctx.profile.bookmarks.children(BAR_FOLDER_ID).slice(Math.max(0, fromIndex));
+    if (items.length) this.popup(nodesMenu(items, this.ctx.profile.bookmarks, this.folderActions()));
+  }
+
+  showBookmarkMenu(id: number | null): void {
+    const store = this.ctx.profile.bookmarks;
+    const node = id === null ? null : (store.get(id) ?? null);
+    if (id !== null && !node) return;
+    const folderUrls = node?.kind === 'folder' ? store.children(node.id).filter((c) => c.kind === 'url') : [];
+    const parentForNew = node?.kind === 'folder' ? node.id : (node?.parentId ?? BAR_FOLDER_ID);
+    this.popup(
+      bookmarkItemMenu(
+        { node, folderUrls, barShown: this.barVisible() },
+        {
+          open: (where) => node?.url && this.openUrl(node.url, where),
+          openAll: () => this.openAllBookmarks(folderUrls),
+          edit: () => node && this.openBookmarkEditor(node.id, { justAdded: false, anchor: 'bar' }),
+          remove: () => node && void this.removeBookmark(node.id),
+          addPage: () => this.openNewBookmarkEditor('url', parentForNew),
+          addFolder: () => this.openNewBookmarkEditor('folder', parentForNew),
+          toggleBar: () => this.toggleBookmarksBar(),
+          manage: () => this.openInternalPage('bookmarks'),
+        },
+      ),
+    );
+  }
+
+  /** Ctrl+Shift+B: mostrar u ocultar la barra en todas las ventanas. */
+  toggleBookmarksBar(): void {
+    const p = this.ctx.profile;
+    p.updateSettings({ bookmarksBar: p.settings.bookmarksBar === 'always' ? 'never' : 'always' });
   }
 
   // ---------------------------------------------------------------- descargas
@@ -657,6 +901,9 @@ export class BrowserWindowController {
       case 'duplicate-tab': this.duplicate(tab); return;
       case 'history': return this.openInternalPage('history');
       case 'downloads': return this.openInternalPage('downloads');
+      case 'bookmarks': return this.openInternalPage('bookmarks');
+      case 'bookmark-page': return this.toggleStar();
+      case 'toggle-bookmarks-bar': return this.toggleBookmarksBar();
       case 'find': return this.openFind();
       case 'find-next':
       case 'find-prev':
@@ -682,9 +929,16 @@ export class BrowserWindowController {
 
   /** Menú "Configuración y más" (botón ⋯ de la barra). */
   showAppMenu(): void {
+    const bm = this.bookmarksState();
+    const bookmarks = bookmarksSubmenu(this.ctx.profile.bookmarks, BAR_FOLDER_ID, OTHER_FOLDER_ID, { canAdd: bm.starrable, starred: bm.starred, barShown: this.ctx.profile.settings.bookmarksBar !== 'never' }, {
+      ...this.folderActions(),
+      addCurrent: () => this.toggleStar(),
+      toggleBar: () => this.toggleBookmarksBar(),
+      manage: () => this.openInternalPage('bookmarks'),
+    });
     this.popup(
       appMenuTemplate(
-        { zoomPercent: this.activeTab.state.zoomPercent },
+        { zoomPercent: this.activeTab.state.zoomPercent, bookmarks },
         {
           newTab: () => this.newTab(),
           newWindow: () => { new BrowserWindowController(this.ctx); },
@@ -778,4 +1032,11 @@ function runEdit(wc: WebContents, cmd: EditCommand): void {
     case 'delete': return wc.delete();
     case 'selectAll': return wc.selectAll();
   }
+}
+
+/** Dirección escrita en "Agregar página…": sin esquema se asume https (como en la barra de direcciones). */
+function normalizeBookmarkUrl(raw: string): string {
+  const t = raw.trim();
+  if (!t || /^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
+  return `https://${t}`;
 }

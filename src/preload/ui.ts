@@ -30,6 +30,15 @@ const api: CallistoUiApi = {
   topSites: () => ipcRenderer.invoke(IPC.topSites),
   hideTopSite: (host, hide) => ipcRenderer.send(IPC.hideTopSite, String(host), hide !== false),
   restoreTopSites: () => ipcRenderer.send(IPC.restoreTopSites),
+  toggleStar: () => ipcRenderer.send(IPC.toggleStar),
+  bookmarkEditorSave: (v) => ipcRenderer.send(IPC.bookmarkEditorSave, { title: String(v.title), url: String(v.url), parentId: Number(v.parentId) }),
+  bookmarkEditorRemove: () => ipcRenderer.send(IPC.bookmarkEditorRemove),
+  bookmarkEditorClose: () => ipcRenderer.send(IPC.bookmarkEditorClose),
+  openBookmark: (id, where) => ipcRenderer.send(IPC.openBookmark, Number(id), String(where)),
+  showBookmarkMenu: (id) => ipcRenderer.send(IPC.bookmarkMenu, id === null ? null : Number(id)),
+  showBookmarkFolder: (id) => ipcRenderer.send(IPC.bookmarkFolderMenu, Number(id)),
+  showBookmarkOverflow: (fromIndex) => ipcRenderer.send(IPC.bookmarkOverflowMenu, Number(fromIndex)),
+  moveBookmark: (id, parentId, index) => ipcRenderer.send(IPC.moveBookmark, Number(id), Number(parentId), Number(index)),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
   },

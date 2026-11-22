@@ -10,6 +10,7 @@ import { ALWAYS_ALLOWED, sitePermissionForCheck, sitePermissionsFor, webOrigin }
 import { DEFAULT_SETTINGS, sanitizeSettings, SEARCH_ENGINES, type Settings } from '../shared/settings';
 import { DownloadStore } from './download-store';
 import { DownloadManager } from './downloads';
+import { BookmarkStore } from './bookmark-store';
 
 /** Pedido de permiso que necesita la decisión del usuario. */
 export interface PermissionRequest {
@@ -39,6 +40,8 @@ export interface ProfileOptions {
 type ProfileEvents = {
   'permission-request': [WebContents, PermissionRequest];
   'settings-changed': [Settings];
+  /** Cambiaron los favoritos (para actualizar la barra y la estrella en todas las ventanas). */
+  'bookmarks-changed': [];
 };
 
 /**
@@ -56,6 +59,7 @@ export class Profile extends EventEmitter<ProfileEvents> {
   readonly favicons: FaviconLoader;
   readonly internal: InternalPages;
   readonly downloads: DownloadManager;
+  readonly bookmarks: BookmarkStore;
   readonly defaultDownloadDir: string;
   /** Los perfiles privados (V0.7) no guardan historial. */
   readonly recordsHistory = true;
@@ -72,6 +76,7 @@ export class Profile extends EventEmitter<ProfileEvents> {
     this.zoom = new ZoomStore(this.db);
     this.permissions = new PermissionStore(this.db);
     this.kv = new KeyValueStore(this.db);
+    this.bookmarks = new BookmarkStore(this.db);
     this.settingsValue = sanitizeSettings(this.kv.get('settings') ?? DEFAULT_SETTINGS);
     this.internal = opts.internal;
 

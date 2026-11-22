@@ -3,6 +3,7 @@
 
 import type { DownloadAction, PromptPermission } from './ipc';
 import type { DownloadEntry } from './downloads';
+import type { BookmarkNode, FolderOption } from './bookmarks';
 import type { SearchEngineId, Settings } from './settings';
 
 export interface HistoryEntry {
@@ -50,6 +51,14 @@ export const INTERNAL_IPC = {
   downloadsClear: 'callisto-internal:downloads-clear',
   settingsChooseDownloadDir: 'callisto-internal:settings-choose-download-dir',
   settingsResetDownloadDir: 'callisto-internal:settings-reset-download-dir',
+  bookmarksFolders: 'callisto-internal:bookmarks-folders',
+  bookmarksChildren: 'callisto-internal:bookmarks-children',
+  bookmarksSearch: 'callisto-internal:bookmarks-search',
+  bookmarksAdd: 'callisto-internal:bookmarks-add',
+  bookmarksUpdate: 'callisto-internal:bookmarks-update',
+  bookmarksMove: 'callisto-internal:bookmarks-move',
+  bookmarksRemove: 'callisto-internal:bookmarks-remove',
+  bookmarksOpen: 'callisto-internal:bookmarks-open',
 } as const;
 
 export interface CallistoInternalApi {
@@ -76,6 +85,18 @@ export interface CallistoInternalApi {
     /** Quita de la lista las descargas terminadas (los archivos no se tocan). */
     clear(): Promise<void>;
   };
+  bookmarks: {
+    folders(): Promise<FolderOption[]>;
+    children(folderId: number): Promise<BookmarkNode[]>;
+    search(query: string): Promise<BookmarkNode[]>;
+    /** Agrega una página (con dirección) o una carpeta (sin dirección). Devuelve el id o un mensaje de error. */
+    add(parentId: number, title: string, url: string | null, index?: number): Promise<{ id?: number; error?: string }>;
+    update(id: number, patch: { title?: string; url?: string }): Promise<{ error?: string }>;
+    move(id: number, parentId: number, index?: number): Promise<{ error?: string }>;
+    /** Borra un favorito o una carpeta con su contenido. */
+    remove(id: number): Promise<void>;
+    open(url: string, where: 'current' | 'new-tab' | 'background-tab' | 'new-window'): void;
+  };
   /** Abre otra página interna (p. ej. el historial desde la configuración) en esta pestaña. */
-  openPage(page: 'history' | 'settings' | 'downloads'): void;
+  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks'): void;
 }

@@ -104,6 +104,7 @@ if (!app.requestSingleInstanceLock()) {
       else request.respond(false, false);
     });
     profile.on('settings-changed', () => BrowserWindowController.refreshAll());
+    profile.on('bookmarks-changed', () => BrowserWindowController.refreshAll());
 
     // Sesión de ventanas y pestañas: se guarda mientras se navega y se recupera al arrancar
     const sessionStore = new SessionStore(profile.kv);

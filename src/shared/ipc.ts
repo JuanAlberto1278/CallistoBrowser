@@ -3,6 +3,7 @@
 
 import type { SecurityLevel } from './url-security';
 import type { DownloadEntry, DownloadPrompt } from './downloads';
+import type { BookmarkEditorState, BookmarkNode } from './bookmarks';
 
 export interface Notice {
   id: number;
@@ -55,6 +56,21 @@ export interface DownloadsUiState {
   progress: number | null;
 }
 
+export interface BookmarksUiState {
+  /** Se muestra la barra de favoritos (según la configuración y si la pestaña activa es una pestaña nueva). */
+  barVisible: boolean;
+  /** Contenido de la barra (con favicons), solo si está visible. */
+  bar: BookmarkNode[];
+  /** La página activa ya es un favorito (estrella llena). */
+  starred: boolean;
+  /** La página activa se puede agregar (no se puede con páginas en blanco o de error). */
+  starrable: boolean;
+  editor: BookmarkEditorState | null;
+}
+
+/** Dónde abrir un favorito. */
+export type OpenWhere = 'current' | 'new-tab' | 'background-tab' | 'new-window';
+
 export interface TopSite {
   url: string;
   host: string;
@@ -102,6 +118,7 @@ export interface WindowState {
   /** Nombre del buscador configurado (para los textos de la barra). */
   searchEngine: string;
   downloads: DownloadsUiState;
+  bookmarks: BookmarksUiState;
 }
 
 export const IPC = {
@@ -132,6 +149,15 @@ export const IPC = {
   topSites: 'callisto:top-sites',
   hideTopSite: 'callisto:hide-top-site',
   restoreTopSites: 'callisto:restore-top-sites',
+  toggleStar: 'callisto:toggle-star',
+  bookmarkEditorSave: 'callisto:bookmark-editor-save',
+  bookmarkEditorRemove: 'callisto:bookmark-editor-remove',
+  bookmarkEditorClose: 'callisto:bookmark-editor-close',
+  openBookmark: 'callisto:open-bookmark',
+  bookmarkMenu: 'callisto:bookmark-menu',
+  bookmarkFolderMenu: 'callisto:bookmark-folder-menu',
+  bookmarkOverflowMenu: 'callisto:bookmark-overflow-menu',
+  moveBookmark: 'callisto:move-bookmark',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
@@ -179,6 +205,21 @@ export interface CallistoUiApi {
   /** Quita (o vuelve a mostrar, con `hide` en false) un sitio de los más visitados. */
   hideTopSite(host: string, hide: boolean): void;
   restoreTopSites(): void;
+  /** Estrella: agrega la página a favoritos, o abre el editor si ya lo es (Ctrl+D). */
+  toggleStar(): void;
+  bookmarkEditorSave(values: { title: string; url: string; parentId: number }): void;
+  /** Quita el favorito que se está editando (o descarta el nuevo). */
+  bookmarkEditorRemove(): void;
+  bookmarkEditorClose(): void;
+  openBookmark(id: number, where: OpenWhere): void;
+  /** Menú contextual de un favorito de la barra, o de la barra (id null). */
+  showBookmarkMenu(id: number | null): void;
+  /** Contenido de una carpeta de la barra, como menú. */
+  showBookmarkFolder(id: number): void;
+  /** Favoritos de la barra que no entran, desde la posición indicada. */
+  showBookmarkOverflow(fromIndex: number): void;
+  /** Reordenar arrastrando: mover a una carpeta, en una posición. */
+  moveBookmark(id: number, parentId: number, index: number): void;
   onState(cb: (state: WindowState) => void): void;
   /** Favicons nuevos: clave -> URL data: de la imagen (la interfaz los guarda). */
   onFavicons(cb: (favicons: Record<string, string>) => void): void;

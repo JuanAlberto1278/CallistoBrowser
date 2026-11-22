@@ -15,9 +15,11 @@ export interface Settings {
   startup: 'restore' | 'newtab';
   /** Carpeta de descargas elegida; null = la carpeta Descargas de Windows. */
   downloadDir: string | null;
+  /** Barra de favoritos: siempre, nunca o solo en las pestañas nuevas (como en Edge). */
+  bookmarksBar: 'always' | 'never' | 'newtab';
 }
 
-export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null };
+export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always' };
 
 /** Ruta absoluta de Windows (C:\… o \\servidor\…). */
 const ABSOLUTE_WIN_PATH = /^([a-zA-Z]:\\|\\\\[^\\]+\\)/;
@@ -29,5 +31,6 @@ export function sanitizeSettings(raw: unknown): Settings {
     searchEngine: typeof r.searchEngine === 'string' && r.searchEngine in SEARCH_ENGINES ? (r.searchEngine as SearchEngineId) : DEFAULT_SETTINGS.searchEngine,
     startup: r.startup === 'restore' || r.startup === 'newtab' ? r.startup : DEFAULT_SETTINGS.startup,
     downloadDir: typeof r.downloadDir === 'string' && r.downloadDir.length < 1024 && ABSOLUTE_WIN_PATH.test(r.downloadDir) ? r.downloadDir : null,
+    bookmarksBar: r.bookmarksBar === 'always' || r.bookmarksBar === 'never' || r.bookmarksBar === 'newtab' ? r.bookmarksBar : DEFAULT_SETTINGS.bookmarksBar,
   };
 }

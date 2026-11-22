@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import type { SecurityLevel } from '../../shared/url-security';
 import type { Suggestion, SuggestResult } from '../../shared/ipc';
 import { displayUrl } from '../../shared/omnibox';
-import { CallistoIcon, FileIcon, GlobeIcon, LockIcon, SearchIcon, WarningIcon, ZoomIcon } from './icons';
+import { CallistoIcon, FileIcon, GlobeIcon, LockIcon, SearchIcon, StarIcon, WarningIcon, ZoomIcon } from './icons';
 
 const SECURITY: Record<SecurityLevel, { label: string; title: string; icon: () => React.JSX.Element; className: string }> = {
   none: { label: '', title: 'Escribí una dirección o una búsqueda', icon: SearchIcon, className: 'none' },
@@ -23,11 +23,14 @@ interface Props {
   searchEngine: string;
   /** Dónde termina el panel de sugerencias (0 = cerrado), para que la interfaz se extienda sobre la página. */
   onOverlay: (bottom: number) => void;
+  /** Estrella de favoritos: llena si la página ya es favorito; oculta si la página no se puede guardar. */
+  starred: boolean;
+  starrable: boolean;
   onSubmit: (text: string) => void;
   onResetZoom: () => void;
 }
 
-export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, searchEngine, onOverlay, onSubmit, onResetZoom }: Props) {
+export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, searchEngine, onOverlay, starred, starrable, onSubmit, onResetZoom }: Props) {
   const api = window.callisto;
   const input = useRef<HTMLInputElement>(null);
   const dropdown = useRef<HTMLDivElement>(null);
@@ -35,7 +38,10 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
   /** Lo que escribió el usuario (sin el autocompletado). */
   const [text, setText] = useState(displayUrl(url));
   const [items, setItems] = useState<Suggestion[]>([]);
+  /** Sugerencia elegida con el teclado (la que abre Enter). */
   const [selected, setSelected] = useState(0);
+  /** Sugerencia bajo el mouse: solo se resalta; no cambia lo que abre Enter ni el texto de la barra. */
+  const [hovered, setHovered] = useState<number | null>(null);
   const [inline, setInline] = useState<SuggestResult['inline']>(null);
   const [open, setOpen] = useState(false);
   const seq = useRef(0);
@@ -46,6 +52,7 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
     setItems([]);
     setInline(null);
     setSelected(0);
+    setHovered(null);
   };
 
   // Mientras el usuario no está escribiendo, la barra refleja la URL real de la página.
@@ -175,6 +182,20 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
           <span>{zoomPercent} %</span>
         </button>
       )}
+      {starrable && (
+        <button
+          className={`star ${starred ? 'starred' : ''}`}
+          data-testid="star"
+          data-starred={starred}
+          aria-pressed={starred}
+          aria-label={starred ? 'Editar el favorito de esta página' : 'Agregar esta página a favoritos'}
+          title={starred ? 'Editar el favorito (Ctrl+D)' : 'Agregar a favoritos (Ctrl+D)'}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => api.toggleStar()}
+        >
+          <StarIcon filled={starred} />
+        </button>
+      )}
       {open && (
         <div className="suggestions" id="suggestions" role="listbox" ref={dropdown} data-testid="suggestions">
           {items.map((item, i) => (
@@ -184,9 +205,10 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
               aria-selected={i === selected}
               data-testid="suggestion"
               data-kind={item.kind}
-              className={`suggestion ${i === selected ? 'selected' : ''}`}
+              className={`suggestion ${i === selected ? 'selected' : ''} ${i === hovered ? 'hovered' : ''}`}
               onMouseDown={(e) => e.preventDefault()} // no sacar el foco de la barra
-              onMouseEnter={() => setSelected(i)}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
               onClick={() => submit(item.url)}
             >
               <span className="suggestion-icon" aria-hidden="true">

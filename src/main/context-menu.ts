@@ -178,11 +178,12 @@ export interface AppMenuActions {
   closeWindow(): void;
 }
 
-export function appMenuTemplate(info: { zoomPercent: number }, a: AppMenuActions): Item[] {
+export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[] }, a: AppMenuActions): Item[] {
   return [
     { label: 'Nueva pestaña', accelerator: 'Ctrl+T', registerAccelerator: false, click: () => a.newTab() },
     { label: 'Nueva ventana', accelerator: 'Ctrl+N', registerAccelerator: false, click: () => a.newWindow() },
     SEP,
+    { label: 'Favoritos', submenu: info.bookmarks?.length ? info.bookmarks : [{ label: '(vacío)', enabled: false }] },
     { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },
     { label: 'Descargas', accelerator: 'Ctrl+J', registerAccelerator: false, click: () => a.downloads() },
     SEP,

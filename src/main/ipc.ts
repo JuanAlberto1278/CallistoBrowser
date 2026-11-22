@@ -5,7 +5,8 @@ import { buildSuggestions } from './suggestions';
 import { PERMISSION_LABELS } from './permissions';
 import { SITE_PERMISSIONS, type SitePermission } from './profile-store';
 import { dialog } from 'electron';
-import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type SuggestResult, type TopSite } from '../shared/ipc';
+import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type OpenWhere, type SuggestResult, type TopSite } from '../shared/ipc';
+import { BookmarkError } from './bookmark-store';
 import { INTERNAL_IPC, type ClearPeriod, type HistoryEntry, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
@@ -106,6 +107,37 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     c.openInternalPage('downloads');
   });
 
+  // ---------------------------------------------------------------- favoritos
+
+  ipcMain.on(IPC.toggleStar, (e) => from(e)?.toggleStar());
+  ipcMain.on(IPC.bookmarkEditorSave, (e, v: unknown) => {
+    const c = from(e);
+    if (!c || !isObj(v) || typeof v.title !== 'string' || typeof v.url !== 'string' || !isId(v.parentId)) return;
+    c.bookmarkEditorSave({ title: v.title.slice(0, 500), url: v.url.slice(0, 8192), parentId: v.parentId });
+  });
+  ipcMain.on(IPC.bookmarkEditorRemove, (e) => from(e)?.bookmarkEditorRemove());
+  ipcMain.on(IPC.bookmarkEditorClose, (e) => from(e)?.closeBookmarkEditor());
+  ipcMain.on(IPC.openBookmark, (e, id: unknown, where: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && isOpenWhere(where)) c.openBookmark(id, where);
+  });
+  ipcMain.on(IPC.bookmarkMenu, (e, id: unknown) => {
+    const c = from(e);
+    if (c && (id === null || isId(id))) c.showBookmarkMenu(id);
+  });
+  ipcMain.on(IPC.bookmarkFolderMenu, (e, id: unknown) => {
+    const c = from(e);
+    if (c && isId(id)) c.showBookmarkFolder(id);
+  });
+  ipcMain.on(IPC.bookmarkOverflowMenu, (e, fromIndex: unknown) => {
+    const c = from(e);
+    if (c && typeof fromIndex === 'number' && Number.isSafeInteger(fromIndex)) c.showBookmarkOverflow(fromIndex);
+  });
+  ipcMain.on(IPC.moveBookmark, (e, id: unknown, parentId: unknown, index: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && isId(parentId) && typeof index === 'number' && Number.isSafeInteger(index)) c.moveBookmark(id, parentId, index);
+  });
+
   // ---------------------------------------------------------------- página de nueva pestaña
 
   ipcMain.handle(IPC.topSites, (e): TopSite[] => {
@@ -170,6 +202,20 @@ function settingsSnapshot(profile: BrowserWindowController['ctx']['profile']): S
     downloadDir: profile.downloadDir,
     downloadDirIsDefault: profile.settings.downloadDir === null,
   };
+}
+
+const OPEN_WHERE: readonly OpenWhere[] = ['current', 'new-tab', 'background-tab', 'new-window'];
+const isOpenWhere = (v: unknown): v is OpenWhere => OPEN_WHERE.includes(v as OpenWhere);
+
+/** Ejecuta un cambio de favoritos y devuelve el error para mostrarlo (sin romper el proceso). */
+function bookmarkOp<T>(profile: BrowserWindowController['ctx']['profile'], op: () => T): { value?: T; error?: string } {
+  try {
+    const value = op();
+    profile.emit('bookmarks-changed');
+    return { value };
+  } catch (e) {
+    return { error: e instanceof BookmarkError ? e.message : 'No se pudo hacer el cambio.' };
+  }
 }
 
 const DOWNLOAD_ACTIONS: readonly DownloadAction[] = ['pause', 'resume', 'cancel', 'open', 'show', 'retry', 'remove'];
@@ -260,6 +306,53 @@ function registerInternalIpc(): void {
     if (isId(id) && isDownloadAction(action)) runDownloadAction(ctx.profile.downloads, id, action);
   });
 
+  // Administrador de favoritos (callisto://bookmarks)
+  const withIcons = (profile: BrowserWindowController['ctx']['profile'], nodes: ReturnType<typeof profile.bookmarks.children>) =>
+    nodes.map((n) => {
+      const iconUrl = n.url ? profile.history.iconUrlFor(n.url) : null;
+      return { ...n, icon: iconUrl ? (profile.favicons.cached(iconUrl) ?? null) : null };
+    });
+  ipcMain.handle(INTERNAL_IPC.bookmarksFolders, (e) => (fromInternal(e, 'bookmarks') ?? denied()).profile.bookmarks.folders());
+  ipcMain.handle(INTERNAL_IPC.bookmarksChildren, (e, id: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks') ?? denied();
+    return isId(id) ? withIcons(ctx.profile, ctx.profile.bookmarks.children(id)) : [];
+  });
+  ipcMain.handle(INTERNAL_IPC.bookmarksSearch, (e, q: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks') ?? denied();
+    return typeof q === 'string' ? withIcons(ctx.profile, ctx.profile.bookmarks.search(q.slice(0, 500))) : [];
+  });
+  ipcMain.handle(INTERNAL_IPC.bookmarksAdd, (e, parentId: unknown, title: unknown, url: unknown, index: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks') ?? denied();
+    if (!isId(parentId) || typeof title !== 'string' || (url !== null && typeof url !== 'string')) return { error: 'Datos no válidos.' };
+    const at = typeof index === 'number' && Number.isSafeInteger(index) ? index : undefined;
+    const r = bookmarkOp(ctx.profile, () =>
+      url === null ? ctx.profile.bookmarks.addFolder(parentId, title.slice(0, 500), at) : ctx.profile.bookmarks.addUrl(parentId, title.slice(0, 500), url.trim().slice(0, 8192), at),
+    );
+    return r.error ? { error: r.error } : { id: r.value };
+  });
+  ipcMain.handle(INTERNAL_IPC.bookmarksUpdate, (e, id: unknown, patch: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks') ?? denied();
+    if (!isId(id) || !isObj(patch)) return { error: 'Datos no válidos.' };
+    const p = { title: typeof patch.title === 'string' ? patch.title.slice(0, 500) : undefined, url: typeof patch.url === 'string' ? patch.url.trim().slice(0, 8192) : undefined };
+    return { error: bookmarkOp(ctx.profile, () => ctx.profile.bookmarks.update(id, p)).error };
+  });
+  ipcMain.handle(INTERNAL_IPC.bookmarksMove, (e, id: unknown, parentId: unknown, index: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks') ?? denied();
+    if (!isId(id) || !isId(parentId)) return { error: 'Datos no válidos.' };
+    const at = typeof index === 'number' && Number.isSafeInteger(index) ? index : undefined;
+    return { error: bookmarkOp(ctx.profile, () => ctx.profile.bookmarks.move(id, parentId, at)).error };
+  });
+  ipcMain.handle(INTERNAL_IPC.bookmarksRemove, async (e, id: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks') ?? denied();
+    if (isId(id)) await ctx.win.removeBookmark(id);
+  });
+  ipcMain.on(INTERNAL_IPC.bookmarksOpen, (e, url: unknown, where: unknown) => {
+    const ctx = fromInternal(e, 'bookmarks');
+    if (!ctx || typeof url !== 'string' || !isOpenWhere(where)) return;
+    if (where === 'current') ctx.win.openFromInternal(ctx.tab, url, 'current');
+    else ctx.win.openUrl(url, where);
+  });
+
   ipcMain.on(INTERNAL_IPC.downloadsOpenFolder, (e) => fromInternal(e, 'downloads')?.profile.downloads.openFolder());
 
   ipcMain.handle(INTERNAL_IPC.downloadsClear, (e) => {
@@ -294,7 +387,7 @@ function registerInternalIpc(): void {
   ipcMain.on(INTERNAL_IPC.openPage, (e, page: unknown) => {
     const tab = Tab.fromWebContents(e.sender);
     if (!tab || tab.kind !== 'internal' || !internalPageOf(e.senderFrame?.url ?? '')) return;
-    if (page !== 'history' && page !== 'settings' && page !== 'downloads') return;
+    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks') return;
     BrowserWindowController.ofTab(tab)?.navigateTab(tab, `callisto://${page}`, false);
   });
 }

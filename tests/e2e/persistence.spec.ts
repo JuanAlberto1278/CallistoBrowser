@@ -339,3 +339,19 @@ test('cerrar Callisto con un sitio que usa service workers no produce errores', 
   await exited;
   expect(output.join('')).not.toContain('EXCEPCION');
 });
+
+test('sugerencias: pasar el mouse por una sugerencia no cambia adónde lleva Enter', async () => {
+  await start();
+  await visit(`${server.base}/page1`, 'Página 1');
+  await visit(`${server.base}/page2`, 'Página 2');
+  const address = c.ui.getByTestId('address');
+  await address.click();
+  await address.fill('');
+  await address.pressSequentially(`${server.base}/page`); // coincide con las páginas 1 y 2 del historial
+  const history = c.ui.locator('[data-testid="suggestion"][data-kind="history"]').first();
+  await expect(history).toBeVisible();
+  await history.hover(); // el mouse queda sobre otra sugerencia
+  await expect(address).toHaveValue(`${server.base}/page`); // el texto no cambia
+  await address.press('Enter');
+  await expectEventually(async () => (await activeTabUrl(c.app)) === `${server.base}/page`);
+});

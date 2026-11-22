@@ -24,6 +24,16 @@ const api: CallistoInternalApi = {
     openFolder: () => ipcRenderer.send(INTERNAL_IPC.downloadsOpenFolder),
     clear: () => ipcRenderer.invoke(INTERNAL_IPC.downloadsClear),
   },
+  bookmarks: {
+    folders: () => ipcRenderer.invoke(INTERNAL_IPC.bookmarksFolders),
+    children: (folderId) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksChildren, Number(folderId)),
+    search: (query) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksSearch, String(query)),
+    add: (parentId, title, url, index) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksAdd, Number(parentId), String(title), url === null ? null : String(url), index === undefined ? undefined : Number(index)),
+    update: (id, patch) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksUpdate, Number(id), { title: patch.title === undefined ? undefined : String(patch.title), url: patch.url === undefined ? undefined : String(patch.url) }),
+    move: (id, parentId, index) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksMove, Number(id), Number(parentId), index === undefined ? undefined : Number(index)),
+    remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksRemove, Number(id)),
+    open: (url, where) => ipcRenderer.send(INTERNAL_IPC.bookmarksOpen, String(url), String(where)),
+  },
   openPage: (page) => ipcRenderer.send(INTERNAL_IPC.openPage, String(page)),
 };
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PermissionPrompt, WindowState } from '../../shared/ipc';
-import { chromeHeight, NOTICE_HEIGHT, PERMISSION_BAR_HEIGHT, TAB_STRIP_HEIGHT, TOOLBAR_HEIGHT } from '../../shared/layout';
+import { BOOKMARKS_BAR_HEIGHT, chromeHeight, NOTICE_HEIGHT, PERMISSION_BAR_HEIGHT, TAB_STRIP_HEIGHT, TOOLBAR_HEIGHT } from '../../shared/layout';
+import { BookmarkEditor, BookmarksBar } from './Bookmarks';
 import { AddressBar } from './AddressBar';
 import { FindBar } from './FindBar';
 import { TabStrip } from './TabStrip';
@@ -52,6 +53,7 @@ export function App() {
   const api = window.callisto;
   const reportSuggestions = useCallback((bottom: number) => setOverlays((o) => (o.suggestions === bottom ? o : { ...o, suggestions: bottom })), []);
   const reportDownloads = useCallback((bottom: number) => setOverlays((o) => (o.downloads === bottom ? o : { ...o, downloads: bottom })), []);
+  const reportBookmarks = useCallback((bottom: number) => setOverlays((o) => (o.bookmarks === bottom ? o : { ...o, bookmarks: bottom })), []);
 
   useEffect(() => {
     api.onState(setState);
@@ -63,7 +65,8 @@ export function App() {
 
   const tab = state?.tabs.find((t) => t.id === state.activeTabId);
   const notice = tab?.notice ?? null;
-  const baseHeight = chromeHeight({ notice: !!notice, find: !!tab?.find, permission: !!tab?.permission });
+  const bookmarks = state?.bookmarks;
+  const baseHeight = chromeHeight({ notice: !!notice, find: !!tab?.find, permission: !!tab?.permission, bookmarksBar: !!bookmarks?.barVisible });
   const downloads = state?.downloads;
 
   // La interfaz se extiende sobre la página lo justo para mostrar los paneles abiertos
@@ -78,6 +81,8 @@ export function App() {
       onMouseDown={() => {
         // Clic fuera del panel de descargas: se cierra (un pedido de autorización, en cambio, espera la respuesta)
         if (downloads?.panelOpen && !downloads.prompt) api.setDownloadsPanel(false);
+        // Clic fuera del editor de favoritos: se cierra (lo recién agregado queda guardado)
+        if (bookmarks?.editor) api.bookmarkEditorClose();
       }}
     >
       <div style={{ height: TAB_STRIP_HEIGHT }} className="tabstrip-row">
@@ -107,6 +112,8 @@ export function App() {
           focusSignal={focusSignal}
           searchEngine={state?.searchEngine ?? 'Google'}
           onOverlay={reportSuggestions}
+          starred={!!bookmarks?.starred}
+          starrable={!!bookmarks?.starrable}
           onSubmit={(text) => api.navigate(text)}
           onResetZoom={() => api.resetZoom()}
         />
@@ -116,6 +123,11 @@ export function App() {
         </button>
       </div>
       <div className={`loading-bar ${tab?.isLoading ? 'active' : ''}`} data-testid="loading" data-loading={!!tab?.isLoading} aria-hidden="true" />
+      {bookmarks?.barVisible && (
+        <div style={{ height: BOOKMARKS_BAR_HEIGHT }} className="bookmarks-row">
+          <BookmarksBar state={bookmarks} />
+        </div>
+      )}
       {notice && (
         <div className={`notice ${notice.kind}`} role="status" data-testid="notice" style={{ height: NOTICE_HEIGHT }}>
           <span className="notice-text">{notice.text}</span>
@@ -127,6 +139,13 @@ export function App() {
       {tab?.permission && <PermissionBar key={tab.permission.id} prompt={tab.permission} />}
       {tab?.find && <FindBar tabId={tab.id} find={tab.find} focusSignal={findSignal} focusHandled={findHandled} />}
       {tab?.newTabPage && <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} />}
+      {bookmarks?.editor && (
+        <BookmarkEditor
+          editor={bookmarks.editor}
+          top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4 + (bookmarks.editor.anchor === 'bar' && bookmarks.barVisible ? BOOKMARKS_BAR_HEIGHT : 0)}
+          onBottom={reportBookmarks}
+        />
+      )}
       {downloads && <DownloadsFlyout state={downloads} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportDownloads} />}
     </div>
   );

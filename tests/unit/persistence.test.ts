@@ -198,7 +198,7 @@ describe('zoom, permisos, favicons y configuración guardados', () => {
   });
 
   it('configuración: solo valores conocidos', () => {
-    expect(sanitizeSettings({ searchEngine: 'duckduckgo', startup: 'newtab' })).toEqual({ searchEngine: 'duckduckgo', startup: 'newtab', downloadDir: null });
+    expect(sanitizeSettings({ searchEngine: 'duckduckgo', startup: 'newtab' })).toEqual({ searchEngine: 'duckduckgo', startup: 'newtab', downloadDir: null, bookmarksBar: 'always' });
     expect(sanitizeSettings({ searchEngine: 'malicioso', startup: 'otro' })).toEqual(DEFAULT_SETTINGS);
     expect(sanitizeSettings(null)).toEqual(DEFAULT_SETTINGS);
     const kv = new KeyValueStore(memoryDb());

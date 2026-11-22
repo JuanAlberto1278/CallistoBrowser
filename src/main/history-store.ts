@@ -142,6 +142,16 @@ export class HistoryStore {
     `);
   }
 
+  /** Favicon conocido para una dirección (o, si no hay, para su sitio). */
+  iconUrlFor(url: string): string | null {
+    const exact = this.db.prepare('SELECT icon_url AS i FROM urls WHERE url = ? AND icon_url IS NOT NULL').get(url) as { i: string } | undefined;
+    if (exact) return exact.i;
+    const host = hostOf(url);
+    if (!host) return null;
+    const site = this.db.prepare('SELECT icon_url AS i FROM urls WHERE host = ? AND icon_url IS NOT NULL ORDER BY visit_count DESC LIMIT 1').get(host) as { i: string } | undefined;
+    return site?.i ?? null;
+  }
+
   count(): number {
     return (this.db.prepare('SELECT count(*) AS n FROM visits').get() as { n: number }).n;
   }

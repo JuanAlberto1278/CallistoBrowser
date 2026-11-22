@@ -96,6 +96,27 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX downloads_start ON downloads(start_time);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      -- Favoritos: árbol de carpetas y páginas. Las dos carpetas raíz (barra y "otros") son fijas.
+      CREATE TABLE bookmarks (
+        id INTEGER PRIMARY KEY,
+        parent_id INTEGER REFERENCES bookmarks(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('folder', 'url')),
+        title TEXT NOT NULL DEFAULT '',
+        url TEXT,
+        position INTEGER NOT NULL DEFAULT 0,
+        created INTEGER NOT NULL,
+        CHECK ((kind = 'url') = (url IS NOT NULL))
+      );
+      CREATE INDEX bookmarks_parent ON bookmarks(parent_id, position);
+      CREATE INDEX bookmarks_url ON bookmarks(url);
+      INSERT INTO bookmarks (id, parent_id, kind, title, position, created) VALUES
+        (1, NULL, 'folder', 'Barra de favoritos', 0, 0),
+        (2, NULL, 'folder', 'Otros favoritos', 1, 0);
+    `,
+  },
 ];
 
 export function migrate(db: DatabaseSync, migrations: Migration[] = MIGRATIONS): number {

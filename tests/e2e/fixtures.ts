@@ -281,7 +281,14 @@ export async function launchCallisto(extraArgs: string[] = [], userData?: string
         await new Promise((r) => setTimeout(r, 500));
       }
       if (!userData) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-      const exceptions = output.join('').split('\n').filter((l) => l.includes('CALLISTO-EXCEPCION'));
+      // Cada excepción con su stack (las líneas siguientes que empiezan con "at ")
+      const all = output.join('').split('\n');
+      const exceptions = all.flatMap((l, i) => {
+        if (!l.includes('CALLISTO-EXCEPCION')) return [];
+        const stack: string[] = [];
+        for (let j = i + 1; j < all.length && /^\s+at /.test(all[j]!) && stack.length < 8; j++) stack.push(all[j]!);
+        return [l, ...stack];
+      });
       if (exceptions.length) throw new Error(`Excepción en el proceso principal de Callisto:\n${exceptions.join('\n')}`);
     },
   };

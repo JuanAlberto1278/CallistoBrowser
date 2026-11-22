@@ -8,11 +8,14 @@ export const NOTICE_HEIGHT = 40;
 export const FIND_BAR_HEIGHT = 40;
 /** Barra de pedido de permiso (cámara, ubicación…). */
 export const PERMISSION_BAR_HEIGHT = 48;
+/** Barra de favoritos. */
+export const BOOKMARKS_BAR_HEIGHT = 32;
 
-export function chromeHeight(opts: { notice: boolean; find: boolean; permission?: boolean }): number {
+export function chromeHeight(opts: { notice: boolean; find: boolean; permission?: boolean; bookmarksBar?: boolean }): number {
   return (
     TAB_STRIP_HEIGHT +
     TOOLBAR_HEIGHT +
+    (opts.bookmarksBar ? BOOKMARKS_BAR_HEIGHT : 0) +
     (opts.notice ? NOTICE_HEIGHT : 0) +
     (opts.permission ? PERMISSION_BAR_HEIGHT : 0) +
     (opts.find ? FIND_BAR_HEIGHT : 0)
