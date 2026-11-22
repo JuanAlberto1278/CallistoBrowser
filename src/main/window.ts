@@ -1,4 +1,5 @@
-import { app, BaseWindow, clipboard, Menu, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
+import { basename, join } from 'node:path';
+import { app, BaseWindow, clipboard, dialog, Menu, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
 import { Tab, type TabKind } from './tab';
 import { showWindow } from './test-mode';
 import type { Profile } from './profile';
@@ -6,7 +7,8 @@ import { matchShortcut, type ShortcutAction } from './shortcuts';
 import type { ClosedTabs, TabSnapshot } from './closed-tabs';
 import { appMenuTemplate, pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
 import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
-import { IPC, MAX_OVERLAY_HEIGHT, type WindowState } from '../shared/ipc';
+import { IPC, MAX_OVERLAY_HEIGHT, type DownloadsUiState, type WindowState } from '../shared/ipc';
+import { sanitizeFileName, siteOf } from '../shared/downloads';
 import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
 import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
@@ -120,6 +122,8 @@ export class BrowserWindowController {
   closing = false;
   /** Alto del panel de sugerencias abierto sobre la página (0 = cerrado). */
   private overlayHeight = 0;
+  /** Panel de descargas abierto (debajo del botón de descargas). */
+  private downloadsPanelOpen = false;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
     this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
@@ -160,6 +164,11 @@ export class BrowserWindowController {
     this.win.on('close', () => {
       // Si quedan otras ventanas, esta va a "cerradas recientemente"; si es la última, queda como sesión guardada.
       if (BrowserWindowController.all.size > 1) this.recordClosedWindow();
+      // Descargas esperando autorización en esta ventana: pasan a otra; si no queda ninguna, se rechazan (nada se guarda)
+      const other = [...BrowserWindowController.all].find((w) => w !== this && !w.closing);
+      for (const r of ctx.profile.downloads.requestsFor(this.id)) r.windowId = other ? other.id : null;
+      ctx.profile.downloads.denyWithoutWindow();
+      if (other) other.queueState();
       this.ctx.session.windowClosing(this);
       this.closing = true;
     });
@@ -203,7 +212,9 @@ export class BrowserWindowController {
 
   private createTab(url: string | undefined, opts: { adopt?: BrowserWindowConstructorOptions; openerId?: number | null } = {}): Tab {
     const kind: TabKind = url && internalPageOf(url) ? 'internal' : 'web';
-    return new Tab(this.ctx.profile, { kind, adopt: opts.adopt, openerId: opts.openerId ?? null });
+    // Sin dirección ni contenido de una página: pestaña nueva del usuario, con su página de nueva pestaña
+    const newTabPage = !url && !opts.adopt;
+    return new Tab(this.ctx.profile, { kind, adopt: opts.adopt, openerId: opts.openerId ?? null, newTabPage });
   }
 
   /**
@@ -424,7 +435,9 @@ export class BrowserWindowController {
     const { width, height } = this.win.getContentBounds();
     const tab = this.activeTab;
     const top = chromeHeight({ notice: !!tab?.notice, find: !!tab?.findOpen, permission: !!tab?.hasPermissionPrompt });
-    this.ui.setBounds({ x: 0, y: 0, width, height: Math.min(height, top + this.overlayHeight) });
+    // La página de nueva pestaña la dibuja la interfaz: ocupa toda la ventana
+    const uiHeight = tab?.showsNewTabPage ? height : Math.min(height, top + this.overlayHeight);
+    this.ui.setBounds({ x: 0, y: 0, width, height: uiHeight });
     tab?.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
   }
 
@@ -448,7 +461,12 @@ export class BrowserWindowController {
   private sendState(): void {
     if (this.win.isDestroyed() || !this.activeTab) return;
     this.layout();
-    const state: WindowState = { tabs: this.tabs.map((t) => t.state), activeTabId: this.activeTab.id, searchEngine: this.ctx.profile.searchEngineName };
+    const state: WindowState = {
+      tabs: this.tabs.map((t) => t.state),
+      activeTabId: this.activeTab.id,
+      searchEngine: this.ctx.profile.searchEngineName,
+      downloads: this.downloadsState(),
+    };
     const active = state.tabs.find((t) => t.id === state.activeTabId)!;
     const blank = !active.url || active.url === 'about:blank';
     this.win.setTitle(`${!blank && active.title ? active.title : 'Nueva pestaña'} — Callisto`);
@@ -480,6 +498,76 @@ export class BrowserWindowController {
     const saved = this.ctx.profile.favicons.cached(key);
     if (saved) this.favicons.set(key, saved);
     return saved;
+  }
+
+  // ---------------------------------------------------------------- descargas
+
+  private downloadsState(): DownloadsUiState {
+    const dm = this.ctx.profile.downloads;
+    const requests = dm.requestsFor(this.id);
+    const r = requests[0];
+    const dir = this.ctx.profile.downloadDir;
+    // La carpeta predeterminada se llama "Downloads" en disco aunque Windows en español la muestre como "Descargas"
+    const folderName = this.ctx.profile.settings.downloadDir === null ? 'Descargas' : basename(dir) || dir;
+    return {
+      prompt: r ? { id: r.id, filename: r.filename, site: siteOf(r.url, r.pageUrl), totalBytes: r.totalBytes, mime: r.mime, dangerous: r.dangerous, folderName } : null,
+      waiting: Math.max(0, requests.length - 1),
+      panelOpen: this.downloadsPanelOpen,
+      items: this.downloadsPanelOpen ? dm.entries({ limit: 8 }) : [],
+      active: dm.activeCount,
+      progress: dm.progress,
+    };
+  }
+
+  /** Llegó un pedido de autorización para esta ventana. */
+  onDownloadRequest(): void {
+    if (!this.win.isFocused()) this.win.flashFrame(true);
+    this.queueState();
+  }
+
+  setDownloadsPanel(open: boolean): void {
+    if (this.downloadsPanelOpen === open) return;
+    this.downloadsPanelOpen = open;
+    this.queueState();
+  }
+
+  async answerDownload(id: number, answer: 'save' | 'save-as' | 'cancel'): Promise<void> {
+    const dm = this.ctx.profile.downloads;
+    const req = dm.requestsFor(this.id).find((r) => r.id === id);
+    if (!req) return;
+    if (answer === 'cancel') {
+      dm.deny(id);
+    } else if (answer === 'save') {
+      dm.approve(id);
+      this.setDownloadsPanel(true); // para ver el progreso
+    } else {
+      const res = await dialog.showSaveDialog(this.win, { title: 'Guardar como', defaultPath: join(this.ctx.profile.downloadDir, req.filename) });
+      // Si se cierra el diálogo sin elegir, el pedido sigue abierto (se puede Guardar o Cancelar)
+      if (res.canceled || !res.filePath || this.win.isDestroyed()) return;
+      dm.approve(id, res.filePath);
+      this.setDownloadsPanel(true);
+    }
+    if (!this.win.isDestroyed()) this.win.flashFrame(false);
+    this.queueState();
+  }
+
+  /** "Guardar imagen como…" / "Guardar enlace como…": el diálogo de Windows es la autorización. */
+  private async saveUrlAs(url: string, source: Tab): Promise<void> {
+    let suggested = 'descarga';
+    try {
+      const u = new URL(url);
+      suggested = sanitizeFileName(decodeURIComponent(u.pathname.split('/').pop() || '') || u.hostname);
+    } catch {
+      /* nombre por defecto */
+    }
+    const res = await dialog.showSaveDialog(this.win, { title: 'Guardar como', defaultPath: join(this.ctx.profile.downloadDir, suggested) });
+    if (res.canceled || !res.filePath) return;
+    const alive = !source.webContents.isDestroyed();
+    this.ctx.profile.downloads.startAuthorized(
+      { url, pageUrl: alive ? source.webContents.getURL() : '', filename: basename(res.filePath), mime: '', totalBytes: 0, sourceId: alive ? source.webContents.id : null },
+      res.filePath,
+    );
+    this.setDownloadsPanel(true);
   }
 
   static refreshAll(): void {
@@ -568,6 +656,7 @@ export class BrowserWindowController {
       case 'reopen-closed-tab': return this.reopenClosed();
       case 'duplicate-tab': this.duplicate(tab); return;
       case 'history': return this.openInternalPage('history');
+      case 'downloads': return this.openInternalPage('downloads');
       case 'find': return this.openFind();
       case 'find-next':
       case 'find-prev':
@@ -600,6 +689,7 @@ export class BrowserWindowController {
           newTab: () => this.newTab(),
           newWindow: () => { new BrowserWindowController(this.ctx); },
           history: () => this.openInternalPage('history'),
+          downloads: () => this.openInternalPage('downloads'),
           zoom: (d) => this.activeTab.zoom(d),
           find: () => this.openFind(),
           settings: () => this.openInternalPage('settings'),
@@ -644,6 +734,7 @@ export class BrowserWindowController {
         openInNewWindow: (url, referrer) => { new BrowserWindowController(this.ctx, { url, referrer }); },
         copyText: (text) => { clipboard.writeText(text).catch(() => {}); },
         copyImageAt: (x, y) => wc.copyImageAt(x, y),
+        saveAs: (url) => { void this.saveUrlAs(url, tab); },
         searchFor: (text) => {
           if (!this.tabs.includes(tab)) return;
           this.newTab({ url: searchUrl(text.slice(0, 1000), profile.searchTemplate), index: this.childIndex(tab), activate: true, openerId: tab.id });

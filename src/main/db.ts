@@ -75,6 +75,27 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    sql: `
+      -- Descargas autorizadas (la lista; los archivos quedan donde el usuario los guardó)
+      CREATE TABLE downloads (
+        id INTEGER PRIMARY KEY,
+        url TEXT NOT NULL,
+        page_url TEXT NOT NULL DEFAULT '',
+        filename TEXT NOT NULL,
+        path TEXT NOT NULL,
+        mime TEXT NOT NULL DEFAULT '',
+        total_bytes INTEGER NOT NULL DEFAULT 0,
+        received_bytes INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL,
+        error TEXT,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER
+      );
+      CREATE INDEX downloads_start ON downloads(start_time);
+    `,
+  },
 ];
 
 export function migrate(db: DatabaseSync, migrations: Migration[] = MIGRATIONS): number {

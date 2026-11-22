@@ -38,6 +38,8 @@ export interface PageMenuActions {
   openInNewWindow(url: string, referrer?: Referrer): void;
   copyText(text: string): void;
   copyImageAt(x: number, y: number): void;
+  /** "Guardar … como…": abre el diálogo de Windows y descarga ahí (ya autorizada por el usuario). */
+  saveAs(url: string): void;
   searchFor(text: string): void;
   edit(cmd: EditCommand): void;
   replaceMisspelling(word: string): void;
@@ -65,6 +67,7 @@ export function pageMenuTemplate(p: ContextMenuParams, a: PageMenuActions): Item
       items.push(
         { label: 'Abrir enlace en una pestaña nueva', click: () => a.openInNewTab(p.linkURL, p.referrerPolicy) },
         { label: 'Abrir enlace en una ventana nueva', click: () => a.openInNewWindow(p.linkURL, p.referrerPolicy) },
+        { label: 'Guardar enlace como…', click: () => a.saveAs(p.linkURL) },
       );
     }
     const isMail = p.linkURL.toLowerCase().startsWith('mailto:');
@@ -78,6 +81,7 @@ export function pageMenuTemplate(p: ContextMenuParams, a: PageMenuActions): Item
 
   if (p.mediaType === 'image' && p.srcURL) {
     if (isWebUrl(p.srcURL)) items.push({ label: 'Abrir imagen en una pestaña nueva', click: () => a.openInNewTab(p.srcURL, p.referrerPolicy) });
+    if (isWebUrl(p.srcURL) || p.srcURL.startsWith('data:image/')) items.push({ label: 'Guardar imagen como…', click: () => a.saveAs(p.srcURL) });
     items.push({ label: 'Copiar imagen', click: () => a.copyImageAt(p.x, p.y) });
     if (!p.srcURL.startsWith('data:')) items.push({ label: 'Copiar dirección de la imagen', click: () => a.copyText(p.srcURL) });
     items.push(SEP);
@@ -167,6 +171,7 @@ export interface AppMenuActions {
   newTab(): void;
   newWindow(): void;
   history(): void;
+  downloads(): void;
   zoom(direction: 'in' | 'out' | 'reset'): void;
   find(): void;
   settings(): void;
@@ -179,6 +184,7 @@ export function appMenuTemplate(info: { zoomPercent: number }, a: AppMenuActions
     { label: 'Nueva ventana', accelerator: 'Ctrl+N', registerAccelerator: false, click: () => a.newWindow() },
     SEP,
     { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },
+    { label: 'Descargas', accelerator: 'Ctrl+J', registerAccelerator: false, click: () => a.downloads() },
     SEP,
     {
       label: `Zoom (${info.zoomPercent} %)`,

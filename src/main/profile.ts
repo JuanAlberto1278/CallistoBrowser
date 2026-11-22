@@ -8,11 +8,8 @@ import { HistoryStore } from './history-store';
 import { FaviconStore, KeyValueStore, PermissionStore, ZoomStore, type SitePermission } from './profile-store';
 import { ALWAYS_ALLOWED, sitePermissionForCheck, sitePermissionsFor, webOrigin } from './permissions';
 import { DEFAULT_SETTINGS, sanitizeSettings, SEARCH_ENGINES, type Settings } from '../shared/settings';
-
-export interface BlockedDownload {
-  filename: string;
-  url: string;
-}
+import { DownloadStore } from './download-store';
+import { DownloadManager } from './downloads';
 
 /** Pedido de permiso que necesita la decisión del usuario. */
 export interface PermissionRequest {
@@ -35,10 +32,11 @@ export interface ProfileOptions {
   /** Carpeta de datos del perfil (base de datos). */
   dataDir: string;
   internal: InternalPages;
+  /** Carpeta Descargas de Windows (se usa si el usuario no eligió otra). */
+  defaultDownloadDir: string;
 }
 
 type ProfileEvents = {
-  'download-blocked': [BlockedDownload, WebContents];
   'permission-request': [WebContents, PermissionRequest];
   'settings-changed': [Settings];
 };
@@ -57,13 +55,13 @@ export class Profile extends EventEmitter<ProfileEvents> {
   readonly kv: KeyValueStore;
   readonly favicons: FaviconLoader;
   readonly internal: InternalPages;
+  readonly downloads: DownloadManager;
+  readonly defaultDownloadDir: string;
   /** Los perfiles privados (V0.7) no guardan historial. */
   readonly recordsHistory = true;
   /** Si la base estaba dañada: dónde quedó la copia apartada. */
   readonly recoveredDatabase?: string;
   private settingsValue: Settings;
-  /** Se está cerrando la app: la base ya no se toca (pueden quedar pedidos tardíos de Chromium). */
-  private closed = false;
 
   constructor(readonly id: string, opts: ProfileOptions) {
     super();
@@ -88,7 +86,6 @@ export class Profile extends EventEmitter<ProfileEvents> {
     // (o se aplica lo que decidió antes para ese sitio); todo lo demás se deniega.
     ses.setPermissionRequestHandler((wc, permission, callback, details) => {
       if (ALWAYS_ALLOWED.has(permission)) return callback(true);
-      if (this.closed) return callback(false);
       const kinds = sitePermissionsFor(permission, 'mediaTypes' in details ? details.mediaTypes : undefined);
       const origin = webOrigin(details.requestingUrl ?? wc.getURL());
       if (!kinds || !origin) return callback(false);
@@ -107,7 +104,7 @@ export class Profile extends EventEmitter<ProfileEvents> {
         respond: (allow, remember) => {
           if (answered) return;
           answered = true;
-          if (remember && !this.closed) for (const k of kinds) this.permissions.set(origin, k, allow ? 'allow' : 'block');
+          if (remember) for (const k of kinds) this.permissions.set(origin, k, allow ? 'allow' : 'block');
           callback(allow);
         },
       });
@@ -118,7 +115,6 @@ export class Profile extends EventEmitter<ProfileEvents> {
     // sitio, que siguen vivos unos instantes después de cerrar las ventanas). Ante cualquier duda: denegado.
     ses.setPermissionCheckHandler((_wc, permission, requestingOrigin, details) => {
       if (ALWAYS_ALLOWED.has(permission)) return true;
-      if (this.closed) return false;
       const kind = sitePermissionForCheck(permission, 'mediaType' in details ? details.mediaType : undefined);
       const origin = webOrigin(requestingOrigin);
       try {
@@ -129,13 +125,14 @@ export class Profile extends EventEmitter<ProfileEvents> {
     });
     ses.setDevicePermissionHandler(() => false);
 
-    // Todavía no hay gestor de descargas (llega en V0.5). Ninguna descarga se guarda: se cancela de inmediato
-    // (misma primera acción que el diseño de V0.5) y se avisa al usuario.
-    ses.on('will-download', (event, item, wc) => {
-      const info: BlockedDownload = { filename: item.getFilename(), url: item.getURL() };
-      event.preventDefault();
-      this.emit('download-blocked', info, wc);
-    });
+    // Descargas: nada se guarda sin la autorización del usuario (ver downloads.ts)
+    this.defaultDownloadDir = opts.defaultDownloadDir;
+    this.downloads = new DownloadManager(ses, new DownloadStore(this.db), () => this.downloadDir);
+  }
+
+  /** Carpeta donde se guardan las descargas. */
+  get downloadDir(): string {
+    return this.settingsValue.downloadDir ?? this.defaultDownloadDir;
   }
 
   get settings(): Settings {
@@ -158,12 +155,4 @@ export class Profile extends EventEmitter<ProfileEvents> {
     return merged;
   }
 
-  close(): void {
-    this.closed = true;
-    try {
-      this.db.close();
-    } catch {
-      /* ya cerrada */
-    }
-  }
 }

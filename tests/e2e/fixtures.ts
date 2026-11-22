@@ -1,6 +1,7 @@
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -11,6 +12,8 @@ export interface TestServer {
   base: string;
   close(): Promise<void>;
   releaseSlow(): void;
+  /** Vuelve a habilitar las URL de un solo uso. */
+  resetTokens(): void;
 }
 
 const page = (title: string, body = '', head = '') =>
@@ -32,8 +35,43 @@ function icoWithPng(): Buffer {
   return Buffer.concat([header, PNG_1X1]);
 }
 
+/** Contenido determinista de los archivos de prueba (para verificar que se guardó completo y sin alterar). */
+export function fileBytes(size: number, seed = 1): Buffer {
+  const b = Buffer.alloc(size);
+  for (let i = 0; i < size; i++) b[i] = (i * 31 + seed * 7) & 0xff;
+  return b;
+}
+
+/**
+ * Laboratorio de descargas: un botón por mecanismo (la matriz medida en V0.1, docs/01-v0.1-resultados.md §1.1).
+ * Cada uno descarga un archivo con nombre propio.
+ */
+const DOWNLOAD_LAB = `
+  <a id="m-attach" href="/dl/attach?name=adjunto.bin&size=4096">Enlace con Content-Disposition</a>
+  <a id="m-octet" href="/dl/octet/octeto.bin">application/octet-stream</a>
+  <a id="m-a-download" href="/dl/text" download="texto.txt">a download</a>
+  <button id="m-js" onclick="location.href='/dl/attach?name=por-js.bin&size=3000'">JavaScript</button>
+  <button id="m-window-open" onclick="window.open('/dl/attach?name=ventana.bin&size=2000')">window.open</button>
+  <a id="m-redirect" href="/dl/redirect">Redirección 302</a>
+  <form id="f" method="post" action="/dl/form"><input name="x" value="1"><button id="m-post">Formulario POST</button></form>
+  <button id="m-iframe" onclick="const f=document.createElement('iframe');f.src='/dl/attach?name=iframe.bin&size=1500';document.body.append(f)">iframe</button>
+  <button id="m-blob" onclick="const a=document.createElement('a');a.href=window.URL.createObjectURL(new Blob(['contenido blob vigente'],{type:'application/octet-stream'}));a.download='blob.txt';a.click()">blob vigente</button>
+  <button id="m-blob-revoked" onclick="const u=window.URL.createObjectURL(new Blob(['contenido blob revocado'],{type:'text/csv'}));const a=document.createElement('a');a.href=u;a.download='exportado.csv';a.click();window.URL.revokeObjectURL(u)">blob revocado</button>
+  <a id="m-data" href="data:application/octet-stream;base64,ZGF0b3MgZW4gdW5hIFVSTCBkYXRh" download="datos.bin">data:</a>
+  <a id="m-pdf" href="/dl/pdf">PDF adjunto</a>
+  <a id="m-one-time" href="/dl/one-time" onclick="this.href='/dl/one-time?t='+Math.random()">Un solo uso (enlace firmado nuevo en cada clic, como en V0.1)</a>
+  <button id="m-multiple" onclick="for (const n of ['uno','dos','tres']) { const a=document.createElement('a'); a.href='/dl/attach?name='+n+'.bin&size=1000'; a.download=n+'.bin'; a.click(); }">Múltiples</button>
+  <a id="m-large" href="/dl/attach?name=grande.bin&size=20971520">Grande (20 MB)</a>
+  <a id="m-slow" href="/dl/slow?name=lento.bin&size=1048576">Lento</a>
+  <a id="m-exe" href="/dl/attach?name=instalador.exe&size=1000">Ejecutable</a>
+  <a id="m-blank" href="/dl/attach?name=pestana.bin&size=1000" target="_blank">target=_blank</a>
+  <img id="img" src="/dl/image.png" width="20" height="20">`;
+
+const PNG_RED = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
 export async function startServer(): Promise<TestServer> {
   let count = 0;
+  const usedTokens = new Set<string>();
   const slowResponses: Array<() => void> = [];
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -51,6 +89,71 @@ export async function startServer(): Promise<TestServer> {
         return html(page('Inicio'));
       case '/page2':
         return html(page('Página 2'));
+      case '/dl/lab':
+        return html(page('Laboratorio de descargas', DOWNLOAD_LAB));
+      case '/dl/attach': {
+        const name = url.searchParams.get('name') ?? 'archivo.bin';
+        const size = Number(url.searchParams.get('size') ?? 1024);
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${name}"`, 'Content-Length': String(size) });
+        return res.end(fileBytes(size));
+      }
+      case '/dl/octet/octeto.bin':
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Length': '2500' });
+        return res.end(fileBytes(2500));
+      case '/dl/text':
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('texto plano para descargar');
+      case '/dl/pdf': {
+        const body = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+        res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="documento.pdf"', 'Content-Length': String(body.length) });
+        return res.end(body);
+      }
+      case '/dl/redirect':
+        res.writeHead(302, { Location: '/dl/attach?name=redirigido.bin&size=1234' });
+        return res.end();
+      case '/dl/form':
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'text/plain' });
+          return res.end('solo POST');
+        }
+        req.resume();
+        req.on('end', () => {
+          res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="resultado-post.bin"', 'Content-Length': '1800' });
+          res.end(fileBytes(1800));
+        });
+        return;
+      case '/dl/one-time': {
+        const token = url.searchParams.get('t') ?? '';
+        if (usedTokens.has(token)) {
+          res.writeHead(410, { 'Content-Type': 'text/plain' });
+          return res.end('vencido');
+        }
+        usedTokens.add(token);
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="un-solo-uso.bin"', 'Content-Length': '1600' });
+        return res.end(fileBytes(1600));
+      }
+      case '/dl/slow': {
+        // 1 MB en trozos de 16 KB cada 100 ms (unos 6 s): da tiempo a pausar, reanudar y cancelar
+        const size = Number(url.searchParams.get('size') ?? 1048576);
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': `attachment; filename="${url.searchParams.get('name') ?? 'lento.bin'}"`, 'Content-Length': String(size) });
+        const data = fileBytes(size);
+        let sent = 0;
+        const t = setInterval(() => {
+          if (res.destroyed) return clearInterval(t);
+          const chunk = data.subarray(sent, sent + 16384);
+          sent += chunk.length;
+          res.write(chunk);
+          if (sent >= size) {
+            clearInterval(t);
+            res.end();
+          }
+        }, 100);
+        req.on('close', () => clearInterval(t));
+        return;
+      }
+      case '/dl/image.png':
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        return res.end(PNG_RED);
       case '/sw-page':
         // Página con un service worker que consulta permisos sin parar (como hacen sitios como Google)
         return html(page('Con service worker', `<script>navigator.serviceWorker.register('/sw.js'); setInterval(() => navigator.permissions.query({ name: 'geolocation' }), 5);</script>`));
@@ -95,6 +198,7 @@ export async function startServer(): Promise<TestServer> {
   return {
     base: `http://127.0.0.1:${port}`,
     releaseSlow: () => slowResponses.splice(0).forEach((f) => f()),
+    resetTokens: () => usedTokens.clear(),
     close: () => new Promise<void>((r) => { slowResponses.splice(0).forEach((f) => f()); server.closeAllConnections(); server.close(() => r()); }),
   };
 }
@@ -143,6 +247,14 @@ export async function launchCallisto(extraArgs: string[] = [], userData?: string
     env: { ...process.env, CALLISTO_USER_DATA_DIR: dir, ELECTRON_RENDERER_URL: '', CALLISTO_TEST_INVISIBLE: process.env.CALLISTO_TEST_VISIBLE ? '' : '1' },
   });
   const proc = app.process(); // referencia propia: Playwright ya no la da si la app salió sola
+  const output: string[] = [];
+  proc.stdout?.on('data', (d) => output.push(String(d)));
+  proc.stderr?.on('data', (d) => output.push(String(d)));
+  // Toda excepción no capturada del proceso principal se registra (en uso real sería un diálogo de error que además
+  // traba el cierre) y hace fallar la prueba al cerrar.
+  await app.evaluate(() => {
+    process.on('uncaughtException', (e) => console.log(`CALLISTO-EXCEPCION: ${e?.stack ?? e}`));
+  });
   const { ui, tab } = await firstWindowPages(app);
   await ui.waitForLoadState('domcontentloaded');
   return {
@@ -156,11 +268,21 @@ export async function launchCallisto(extraArgs: string[] = [], userData?: string
       const closed = app.close().then(() => true, () => true);
       const ok = await Promise.race([closed, new Promise<boolean>((r) => setTimeout(() => r(false), 15_000))]);
       if (!ok) {
-        console.warn('[pruebas] Callisto no cerró en 15 s; se termina el proceso');
-        proc.kill();
+        const lines = output.join('').split('\n').filter((l) => l.trim() && !/^\[\d+:/.test(l));
+        console.warn(`[pruebas] Callisto no cerró en 15 s; se termina con todos sus procesos. Salida:\n${lines.slice(-25).join('\n')}`);
+        // El árbol completo: terminar solo el proceso principal dejaba vivos los demás (y sus diálogos)
+        if (proc.pid) {
+          try {
+            execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+          } catch {
+            proc.kill();
+          }
+        }
         await new Promise((r) => setTimeout(r, 500));
       }
       if (!userData) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      const exceptions = output.join('').split('\n').filter((l) => l.includes('CALLISTO-EXCEPCION'));
+      if (exceptions.length) throw new Error(`Excepción en el proceso principal de Callisto:\n${exceptions.join('\n')}`);
     },
   };
 }

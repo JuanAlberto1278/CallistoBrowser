@@ -56,3 +56,18 @@ export const SettingsIcon = () => (
 export const CallistoIcon = () => (
   <svg {...base} width={14} height={14}><circle cx="8" cy="8" r="5.5" /><circle cx="6.3" cy="6.5" r="1" /><circle cx="9.6" cy="9.8" r="1.4" /></svg>
 );
+export const DownloadIcon = () => (
+  <svg {...base}><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10" /></svg>
+);
+export const FolderIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M2 4.5h4l1.3 1.5H14v7H2z" /></svg>
+);
+export const PauseIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M5.5 3.5v9M10.5 3.5v9" /></svg>
+);
+export const PlayIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M5 3.5v9l7-4.5z" /></svg>
+);
+export const RetryIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.5v3h-3" /></svg>
+);

@@ -23,6 +23,13 @@ const api: CallistoUiApi = {
   setOverlayHeight: (px) => ipcRenderer.send(IPC.overlayHeight, Number(px)),
   respondPermission: (id, allow, remember) => ipcRenderer.send(IPC.respondPermission, Number(id), allow === true, remember === true),
   showAppMenu: () => ipcRenderer.send(IPC.appMenu),
+  answerDownload: (id, answer) => ipcRenderer.send(IPC.answerDownload, Number(id), String(answer)),
+  downloadAction: (id, action) => ipcRenderer.send(IPC.downloadAction, Number(id), String(action)),
+  setDownloadsPanel: (open) => ipcRenderer.send(IPC.downloadsPanel, open === true),
+  openDownloadsPage: () => ipcRenderer.send(IPC.openDownloadsPage),
+  topSites: () => ipcRenderer.invoke(IPC.topSites),
+  hideTopSite: (host, hide) => ipcRenderer.send(IPC.hideTopSite, String(host), hide !== false),
+  restoreTopSites: () => ipcRenderer.send(IPC.restoreTopSites),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
   },

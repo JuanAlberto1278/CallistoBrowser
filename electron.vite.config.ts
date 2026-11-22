@@ -40,6 +40,7 @@ export default defineConfig({
           // Páginas internas (callisto://history, callisto://settings)
           history: resolve(__dirname, 'src/renderer/history.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html'),
+          downloads: resolve(__dirname, 'src/renderer/downloads.html'),
         },
       },
     },

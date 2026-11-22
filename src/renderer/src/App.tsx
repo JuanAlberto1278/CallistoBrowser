@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PermissionPrompt, WindowState } from '../../shared/ipc';
 import { chromeHeight, NOTICE_HEIGHT, PERMISSION_BAR_HEIGHT, TAB_STRIP_HEIGHT, TOOLBAR_HEIGHT } from '../../shared/layout';
 import { AddressBar } from './AddressBar';
 import { FindBar } from './FindBar';
 import { TabStrip } from './TabStrip';
+import { DownloadsButton, DownloadsFlyout } from './Downloads';
+import { NewTabPage } from './NewTabPage';
 import { BackIcon, CloseIcon, ForwardIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
 
 function siteName(origin: string): string {
@@ -45,7 +47,11 @@ export function App() {
   const [focusSignal, setFocusSignal] = useState(0);
   const [findSignal, setFindSignal] = useState(0);
   const findHandled = useRef(0);
+  /** Dónde termina cada panel que se superpone a la página (sugerencias, descargas). */
+  const [overlays, setOverlays] = useState<Record<string, number>>({});
   const api = window.callisto;
+  const reportSuggestions = useCallback((bottom: number) => setOverlays((o) => (o.suggestions === bottom ? o : { ...o, suggestions: bottom })), []);
+  const reportDownloads = useCallback((bottom: number) => setOverlays((o) => (o.downloads === bottom ? o : { ...o, downloads: bottom })), []);
 
   useEffect(() => {
     api.onState(setState);
@@ -58,8 +64,22 @@ export function App() {
   const tab = state?.tabs.find((t) => t.id === state.activeTabId);
   const notice = tab?.notice ?? null;
   const baseHeight = chromeHeight({ notice: !!notice, find: !!tab?.find, permission: !!tab?.permission });
+  const downloads = state?.downloads;
+
+  // La interfaz se extiende sobre la página lo justo para mostrar los paneles abiertos
+  const overlayBottom = Math.max(0, ...Object.values(overlays));
+  useLayoutEffect(() => {
+    api.setOverlayHeight(overlayBottom > 0 ? Math.max(0, Math.ceil(overlayBottom) + 8 - baseHeight) : 0);
+  }, [overlayBottom, baseHeight, api]);
+
   return (
-    <div className="chrome">
+    <div
+      className="chrome"
+      onMouseDown={() => {
+        // Clic fuera del panel de descargas: se cierra (un pedido de autorización, en cambio, espera la respuesta)
+        if (downloads?.panelOpen && !downloads.prompt) api.setDownloadsPanel(false);
+      }}
+    >
       <div style={{ height: TAB_STRIP_HEIGHT }} className="tabstrip-row">
         {state && <TabStrip tabs={state.tabs} activeId={state.activeTabId} favicons={favicons} />}
       </div>
@@ -86,10 +106,11 @@ export function App() {
           zoomPercent={tab?.zoomPercent ?? 100}
           focusSignal={focusSignal}
           searchEngine={state?.searchEngine ?? 'Google'}
-          baseHeight={baseHeight}
+          onOverlay={reportSuggestions}
           onSubmit={(text) => api.navigate(text)}
           onResetZoom={() => api.resetZoom()}
         />
+        {downloads && <DownloadsButton state={downloads} onClick={() => api.setDownloadsPanel(!downloads.panelOpen)} />}
         <button className="icon-button" data-testid="app-menu" title="Configuración y más" aria-label="Configuración y más" onClick={() => api.showAppMenu()}>
           <MoreIcon />
         </button>
@@ -105,6 +126,8 @@ export function App() {
       )}
       {tab?.permission && <PermissionBar key={tab.permission.id} prompt={tab.permission} />}
       {tab?.find && <FindBar tabId={tab.id} find={tab.find} focusSignal={findSignal} focusHandled={findHandled} />}
+      {tab?.newTabPage && <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} />}
+      {downloads && <DownloadsFlyout state={downloads} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportDownloads} />}
     </div>
   );
 }

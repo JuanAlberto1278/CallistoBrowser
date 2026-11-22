@@ -1,7 +1,8 @@
 // API de las páginas internas (callisto://history, callisto://settings). Cada página solo puede usar su parte:
 // el proceso principal comprueba qué página envía cada pedido.
 
-import type { PromptPermission } from './ipc';
+import type { DownloadAction, PromptPermission } from './ipc';
+import type { DownloadEntry } from './downloads';
 import type { SearchEngineId, Settings } from './settings';
 
 export interface HistoryEntry {
@@ -28,6 +29,9 @@ export interface SettingsSnapshot {
   engines: Array<{ id: SearchEngineId; name: string }>;
   permissions: SitePermissionEntry[];
   zoom: Array<{ host: string; percent: number }>;
+  /** Carpeta de descargas en uso y si es la predeterminada (Descargas de Windows). */
+  downloadDir: string;
+  downloadDirIsDefault: boolean;
 }
 
 export const INTERNAL_IPC = {
@@ -40,6 +44,12 @@ export const INTERNAL_IPC = {
   settingsRemovePermission: 'callisto-internal:settings-remove-permission',
   settingsRemoveZoom: 'callisto-internal:settings-remove-zoom',
   openPage: 'callisto-internal:open-page',
+  downloadsList: 'callisto-internal:downloads-list',
+  downloadsAction: 'callisto-internal:downloads-action',
+  downloadsOpenFolder: 'callisto-internal:downloads-open-folder',
+  downloadsClear: 'callisto-internal:downloads-clear',
+  settingsChooseDownloadDir: 'callisto-internal:settings-choose-download-dir',
+  settingsResetDownloadDir: 'callisto-internal:settings-reset-download-dir',
 } as const;
 
 export interface CallistoInternalApi {
@@ -55,7 +65,17 @@ export interface CallistoInternalApi {
     set(partial: Partial<Settings>): Promise<SettingsSnapshot>;
     removePermission(origin: string, permission: PromptPermission): Promise<SettingsSnapshot>;
     removeZoom(host: string): Promise<SettingsSnapshot>;
+    /** Abre el selector de carpetas de Windows (la ruta la elige el usuario, no la página). */
+    chooseDownloadDir(): Promise<SettingsSnapshot>;
+    resetDownloadDir(): Promise<SettingsSnapshot>;
+  };
+  downloads: {
+    list(query?: string): Promise<DownloadEntry[]>;
+    action(id: number, action: DownloadAction): Promise<void>;
+    openFolder(): void;
+    /** Quita de la lista las descargas terminadas (los archivos no se tocan). */
+    clear(): Promise<void>;
   };
   /** Abre otra página interna (p. ej. el historial desde la configuración) en esta pestaña. */
-  openPage(page: 'history' | 'settings'): void;
+  openPage(page: 'history' | 'settings' | 'downloads'): void;
 }

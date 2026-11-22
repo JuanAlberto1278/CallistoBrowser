@@ -4,7 +4,8 @@ import { Tab } from './tab';
 import { buildSuggestions } from './suggestions';
 import { PERMISSION_LABELS } from './permissions';
 import { SITE_PERMISSIONS, type SitePermission } from './profile-store';
-import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type SuggestResult } from '../shared/ipc';
+import { dialog } from 'electron';
+import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type SuggestResult, type TopSite } from '../shared/ipc';
 import { INTERNAL_IPC, type ClearPeriod, type HistoryEntry, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
@@ -87,6 +88,42 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     if (c && isId(id)) c.active.respondPermission(id, allow === true, remember === true);
   });
 
+  // ---------------------------------------------------------------- descargas
+
+  ipcMain.on(IPC.answerDownload, (e, id: unknown, answer: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && (answer === 'save' || answer === 'save-as' || answer === 'cancel')) void c.answerDownload(id, answer);
+  });
+  ipcMain.on(IPC.downloadAction, (e, id: unknown, action: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && isDownloadAction(action)) runDownloadAction(c.ctx.profile.downloads, id, action);
+  });
+  ipcMain.on(IPC.downloadsPanel, (e, open: unknown) => from(e)?.setDownloadsPanel(open === true));
+  ipcMain.on(IPC.openDownloadsPage, (e) => {
+    const c = from(e);
+    if (!c) return;
+    c.setDownloadsPanel(false);
+    c.openInternalPage('downloads');
+  });
+
+  // ---------------------------------------------------------------- página de nueva pestaña
+
+  ipcMain.handle(IPC.topSites, (e): TopSite[] => {
+    const c = from(e);
+    if (!c) return [];
+    const profile = c.ctx.profile;
+    const hidden = new Set(profile.kv.get<string[]>('ntp.hidden') ?? []);
+    return profile.history.topSites(8, hidden).map((s) => ({ url: s.url, host: s.host, title: s.title, icon: s.iconUrl ? (profile.favicons.cached(s.iconUrl) ?? null) : null }));
+  });
+  ipcMain.on(IPC.hideTopSite, (e, host: unknown, hide: unknown) => {
+    const c = from(e);
+    if (!c || typeof host !== 'string' || host.length > 253) return;
+    const kv = c.ctx.profile.kv;
+    const hidden = (kv.get<string[]>('ntp.hidden') ?? []).filter((h) => h !== host);
+    kv.set('ntp.hidden', hide === false ? hidden : [...hidden, host].slice(-200));
+  });
+  ipcMain.on(IPC.restoreTopSites, (e) => from(e)?.ctx.profile.kv.delete('ntp.hidden'));
+
   ipcMain.handle(IPC.suggest, (e, text: unknown): SuggestResult => {
     const c = from(e);
     if (!c || typeof text !== 'string' || !text.trim() || text.length > 1000) return { items: [], inline: null };
@@ -130,7 +167,24 @@ function settingsSnapshot(profile: BrowserWindowController['ctx']['profile']): S
     engines: (Object.keys(SEARCH_ENGINES) as SearchEngineId[]).map((id) => ({ id, name: SEARCH_ENGINES[id].name })),
     permissions: profile.permissions.list().map((p) => ({ origin: p.origin, permission: p.permission, label: PERMISSION_LABELS[p.permission], setting: p.setting })),
     zoom: profile.zoom.all().map((z) => ({ host: z.host, percent: zoomPercent(z.factor) })),
+    downloadDir: profile.downloadDir,
+    downloadDirIsDefault: profile.settings.downloadDir === null,
   };
+}
+
+const DOWNLOAD_ACTIONS: readonly DownloadAction[] = ['pause', 'resume', 'cancel', 'open', 'show', 'retry', 'remove'];
+const isDownloadAction = (v: unknown): v is DownloadAction => DOWNLOAD_ACTIONS.includes(v as DownloadAction);
+
+function runDownloadAction(dm: BrowserWindowController['ctx']['profile']['downloads'], id: number, action: DownloadAction): void {
+  switch (action) {
+    case 'pause': return dm.pause(id);
+    case 'resume': return dm.resume(id);
+    case 'cancel': return dm.cancel(id);
+    case 'open': return void dm.open(id);
+    case 'show': return dm.showInFolder(id);
+    case 'retry': return dm.retry(id);
+    case 'remove': return dm.remove(id);
+  }
 }
 
 function registerInternalIpc(): void {
@@ -176,8 +230,40 @@ function registerInternalIpc(): void {
 
   ipcMain.handle(INTERNAL_IPC.settingsSet, (e, partial: unknown) => {
     const ctx = fromInternal(e, 'settings') ?? denied();
-    ctx.profile.updateSettings(partial);
+    // La carpeta de descargas no se acepta desde la página: solo con el selector de carpetas de Windows
+    const { downloadDir: _ignored, ...rest } = isObj(partial) ? partial : {};
+    ctx.profile.updateSettings(rest);
     return settingsSnapshot(ctx.profile);
+  });
+
+  ipcMain.handle(INTERNAL_IPC.settingsChooseDownloadDir, async (e) => {
+    const ctx = fromInternal(e, 'settings') ?? denied();
+    const res = await dialog.showOpenDialog(ctx.win.win, { title: 'Carpeta de descargas', defaultPath: ctx.profile.downloadDir, properties: ['openDirectory', 'createDirectory'] });
+    const dir = res.filePaths[0];
+    if (!res.canceled && dir) ctx.profile.updateSettings({ downloadDir: dir });
+    return settingsSnapshot(ctx.profile);
+  });
+
+  ipcMain.handle(INTERNAL_IPC.settingsResetDownloadDir, (e) => {
+    const ctx = fromInternal(e, 'settings') ?? denied();
+    ctx.profile.updateSettings({ downloadDir: null });
+    return settingsSnapshot(ctx.profile);
+  });
+
+  ipcMain.handle(INTERNAL_IPC.downloadsList, (e, query: unknown) => {
+    const ctx = fromInternal(e, 'downloads') ?? denied();
+    return ctx.profile.downloads.entries({ query: typeof query === 'string' ? query.slice(0, 500) : undefined, limit: 500 });
+  });
+
+  ipcMain.handle(INTERNAL_IPC.downloadsAction, (e, id: unknown, action: unknown) => {
+    const ctx = fromInternal(e, 'downloads') ?? denied();
+    if (isId(id) && isDownloadAction(action)) runDownloadAction(ctx.profile.downloads, id, action);
+  });
+
+  ipcMain.on(INTERNAL_IPC.downloadsOpenFolder, (e) => fromInternal(e, 'downloads')?.profile.downloads.openFolder());
+
+  ipcMain.handle(INTERNAL_IPC.downloadsClear, (e) => {
+    (fromInternal(e, 'downloads') ?? denied()).profile.downloads.clearFinished();
   });
 
   ipcMain.handle(INTERNAL_IPC.settingsRemovePermission, (e, origin: unknown, permission: unknown) => {
@@ -208,7 +294,7 @@ function registerInternalIpc(): void {
   ipcMain.on(INTERNAL_IPC.openPage, (e, page: unknown) => {
     const tab = Tab.fromWebContents(e.sender);
     if (!tab || tab.kind !== 'internal' || !internalPageOf(e.senderFrame?.url ?? '')) return;
-    if (page !== 'history' && page !== 'settings') return;
+    if (page !== 'history' && page !== 'settings' && page !== 'downloads') return;
     BrowserWindowController.ofTab(tab)?.navigateTab(tab, `callisto://${page}`, false);
   });
 }

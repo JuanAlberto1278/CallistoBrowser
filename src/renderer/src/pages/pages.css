@@ -160,3 +160,17 @@ td { padding: 6px 8px; border-top: 1px solid var(--border); }
 td:last-child, th:last-child { text-align: right; }
 .setting-allow { color: inherit; }
 .setting-block { color: var(--danger); }
+
+/* Botones de ícono de las filas de descarga (componente compartido con la interfaz) */
+.icon-button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+.icon-button:hover { background: var(--active); color: var(--fg); }
+.icon-button:focus-visible { outline: 2px solid var(--accent); }

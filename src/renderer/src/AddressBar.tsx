@@ -21,13 +21,13 @@ interface Props {
   zoomPercent: number;
   focusSignal: number;
   searchEngine: string;
-  /** Alto de la interfaz sin el panel de sugerencias (para calcular cuánto se superpone a la página). */
-  baseHeight: number;
+  /** Dónde termina el panel de sugerencias (0 = cerrado), para que la interfaz se extienda sobre la página. */
+  onOverlay: (bottom: number) => void;
   onSubmit: (text: string) => void;
   onResetZoom: () => void;
 }
 
-export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, searchEngine, baseHeight, onSubmit, onResetZoom }: Props) {
+export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, searchEngine, onOverlay, onSubmit, onResetZoom }: Props) {
   const api = window.callisto;
   const input = useRef<HTMLInputElement>(null);
   const dropdown = useRef<HTMLDivElement>(null);
@@ -78,9 +78,8 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
   // La interfaz se extiende sobre la página lo justo para mostrar el panel
   useLayoutEffect(() => {
     const el = dropdown.current;
-    const h = open && el ? Math.max(0, Math.ceil(el.getBoundingClientRect().bottom) + 8 - baseHeight) : 0;
-    api.setOverlayHeight(h);
-  }, [open, items, baseHeight, api]);
+    onOverlay(open && el ? el.getBoundingClientRect().bottom : 0);
+  }, [open, items, onOverlay]);
 
   const requestSuggestions = (typed: string, allowInline: boolean) => {
     const id = ++seq.current;

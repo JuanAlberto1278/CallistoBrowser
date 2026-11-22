@@ -180,6 +180,43 @@ export class HistoryStore {
   }
 
   /**
+   * Sitios más visitados de los últimos 30 días, uno por sitio (para la página de nueva pestaña). Cada mosaico lleva a
+   * la página principal del sitio. `hidden`: sitios que el usuario quitó.
+   */
+  topSites(limit = 8, hidden: ReadonlySet<string> = new Set()): Array<{ url: string; host: string; title: string; iconUrl: string | null }> {
+    const since = this.now() - 30 * DAY;
+    const rows = this.db
+      .prepare(`SELECT url, title, host, visit_count AS visitCount, typed_count AS typedCount, last_visit AS lastVisit, icon_url AS iconUrl
+        FROM urls WHERE url LIKE 'http%' AND last_visit >= ? ORDER BY visit_count DESC LIMIT 500`)
+      .all(since) as unknown as UrlRow[];
+    const now = this.now();
+    const sites = new Map<string, { score: number; origin: string; host: string; rootTitle: string; anyTitle: string; iconUrl: string | null }>();
+    for (const r of rows) {
+      const host = bareHost(r.host);
+      if (!host || hidden.has(host)) continue;
+      let origin: string;
+      try {
+        origin = new URL(r.url).origin;
+      } catch {
+        continue;
+      }
+      const days = Math.max(0, (now - r.lastVisit) / DAY);
+      const score = (Math.log2(1 + r.visitCount) + 2 * Math.log2(1 + r.typedCount)) / (1 + days / 7);
+      const isRoot = /^https?:\/\/[^/]+\/?$/.test(r.url);
+      const s = sites.get(host) ?? { score: 0, origin, host, rootTitle: '', anyTitle: '', iconUrl: null };
+      s.score += score;
+      if (isRoot && r.title) s.rootTitle = r.title;
+      if (!s.anyTitle && r.title) s.anyTitle = r.title;
+      s.iconUrl ??= r.iconUrl;
+      sites.set(host, s);
+    }
+    return [...sites.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((s) => ({ url: `${s.origin}/`, host: s.host, title: s.rootTitle || s.host, iconUrl: s.iconUrl }));
+  }
+
+  /**
    * Autocompletado en línea (como Chrome): si lo escrito es el comienzo del nombre de un sitio visitado con frecuencia
    * o escrito antes, devuelve ese sitio. Solo completa nombres de sitio, nunca rutas ni búsquedas.
    */

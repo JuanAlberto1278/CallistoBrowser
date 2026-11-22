@@ -243,8 +243,13 @@ test('buscar en la página: Ctrl+F, conteo, siguiente/anterior, F3 y Esc', async
 test('la búsqueda y los avisos son de cada pestaña', async () => {
   await typeAddress(c.ui, `${server.base}/page1`);
   await expect(c.tab).toHaveTitle('Página 1');
-  await c.tab.click('#download');
-  await expect(c.ui.getByTestId('notice')).toBeVisible();
+  // Aviso propio de la pestaña: la página deja de funcionar
+  await c.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find((w) => w.getURL() === url)!.forcefullyCrashRenderer(), `${server.base}/page1`);
+  await expect(c.ui.getByTestId('notice')).toContainText('dejó de funcionar');
+  await pressKey(c.app, 'ui', 'F5');
+  // (el objeto de Playwright de la página que falló ya no se puede usar; se verifica en la pestaña)
+  await expect(c.ui.getByTestId('loading')).toHaveAttribute('data-loading', 'false');
+  await expect(activeTab()).toContainText('Página 1');
   await pressKey(c.app, 'tab', 'F', ['control']);
   await c.ui.getByTestId('find-input').fill('Descargar');
   await expect(c.ui.getByTestId('find-status')).toHaveText('1 de 1');

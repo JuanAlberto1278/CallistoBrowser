@@ -41,7 +41,7 @@ describe('base de datos', () => {
     const db = new DatabaseSync(':memory:');
     migrate(db);
     expect(() => migrate(db, [...MIGRATIONS, { version: 99, sql: 'CREATE TABLE x (a); SELECT * FROM tabla_que_no_existe;' }])).toThrow();
-    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(1);
+    expect((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(MIGRATIONS.at(-1)!.version);
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'x'").get()).toBeUndefined();
   });
 
@@ -198,7 +198,7 @@ describe('zoom, permisos, favicons y configuración guardados', () => {
   });
 
   it('configuración: solo valores conocidos', () => {
-    expect(sanitizeSettings({ searchEngine: 'duckduckgo', startup: 'newtab' })).toEqual({ searchEngine: 'duckduckgo', startup: 'newtab' });
+    expect(sanitizeSettings({ searchEngine: 'duckduckgo', startup: 'newtab' })).toEqual({ searchEngine: 'duckduckgo', startup: 'newtab', downloadDir: null });
     expect(sanitizeSettings({ searchEngine: 'malicioso', startup: 'otro' })).toEqual(DEFAULT_SETTINGS);
     expect(sanitizeSettings(null)).toEqual(DEFAULT_SETTINGS);
     const kv = new KeyValueStore(memoryDb());

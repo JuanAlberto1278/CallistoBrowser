@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { closedPort, expectEventually, launchCallisto, online, pressKey, startServer, typeAddress, type Callisto, type TestServer } from './fixtures';
 
@@ -119,18 +119,17 @@ test('Ctrl+L, Alt+D y F6 enfocan la barra de direcciones desde la página', asyn
   }
 });
 
-test('las descargas se bloquean, se avisa y no se guarda nada', async () => {
+test('una descarga pide autorización antes de guardarse; Cancelar no deja nada', async () => {
   await typeAddress(c.ui, `${server.base}/page1`);
   await expect(c.tab).toHaveTitle('Página 1');
   await c.tab.click('#download');
-  const notice = c.ui.getByTestId('notice');
-  await expect(notice).toBeVisible();
-  await expect(notice).toContainText('callisto-prueba.bin');
-  await expect(notice).toContainText('no se guardó nada');
+  await expect(c.ui.getByTestId('download-prompt-name')).toHaveText('callisto-prueba.bin');
+  expect(existsSync(join(c.userData, 'Downloads')) ? readdirSync(join(c.userData, 'Downloads')) : []).toEqual([]);
+  await c.ui.getByTestId('download-deny').click();
+  await expect(c.ui.getByTestId('download-prompt')).toBeHidden();
   await new Promise((r) => setTimeout(r, 500));
   expect(readdirSync(join(c.userData, 'Quarantine'))).toEqual([]);
-  await c.ui.getByTestId('notice-close').click();
-  await expect(notice).toBeHidden();
+  expect(existsSync(join(c.userData, 'Downloads')) ? readdirSync(join(c.userData, 'Downloads')) : []).toEqual([]);
 });
 
 test('user-agent honesto: Callisto, sin Electron', async () => {

@@ -19,6 +19,7 @@ export type ShortcutAction =
   | 'reopen-closed-tab'
   | 'duplicate-tab'
   | 'history'
+  | 'downloads'
   | 'find'
   | 'find-next'
   | 'find-prev'
@@ -60,6 +61,7 @@ export function matchShortcut(input: Input, ctx: { fromPage: boolean; isLoading:
   if (ctrl && !shift && k === 'n') return 'new-window';
   if (ctrl && shift && k === 'k') return 'duplicate-tab';
   if (ctrl && !shift && k === 'h') return 'history';
+  if (ctrl && !shift && k === 'j') return 'downloads';
   if ((ctrl && !shift && k === 'Tab') || (ctrl && !shift && k === 'PageDown')) return 'next-tab';
   if ((ctrl && shift && k === 'Tab') || (ctrl && !shift && k === 'PageUp')) return 'prev-tab';
   if (ctrl && !shift) {

@@ -7,6 +7,19 @@
 // que el usuario elige explícitamente sigue funcionando con el diálogo de Windows.
 import { contextBridge } from 'electron';
 
+// Descargas autorizadas (docs/01-v0.1-resultados.md §1.2, "B-guard"): Callisto cancela toda descarga hasta que el
+// usuario la autoriza y después la vuelve a pedir. Muchos botones "Exportar" crean un blob:, lo descargan y lo revocan
+// en el acto; sin esto, al autorizar ya no existiría. Se retrasa la revocación 2 minutos (solo libera memoria más tarde).
+contextBridge.executeInMainWorld({
+  func: (delayMs: number) => {
+    const original = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = (url: string) => {
+      setTimeout(() => original(url), delayMs);
+    };
+  },
+  args: [120_000],
+});
+
 contextBridge.executeInMainWorld({
   func: () => {
     if (typeof PublicKeyCredential === 'undefined' || !navigator.credentials) return;

@@ -67,6 +67,27 @@ export function SettingsPage() {
         </label>
       </section>
 
+      <section className="card" aria-labelledby="s-downloads">
+        <h2 id="s-downloads">Descargas</h2>
+        <div className="row">
+          <div>
+            <div>Carpeta de descargas</div>
+            <div className="muted" data-testid="settings-download-dir">{snap.downloadDir}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {!snap.downloadDirIsDefault && (
+              <button className="btn" onClick={() => void api.settings.resetDownloadDir().then(setSnap)}>
+                Usar Descargas
+              </button>
+            )}
+            <button className="btn" data-testid="settings-download-dir-change" onClick={() => void api.settings.chooseDownloadDir().then(setSnap)}>
+              Cambiar…
+            </button>
+          </div>
+        </div>
+        <p className="muted">Callisto te pregunta antes de guardar cada archivo. Con «Guardar como…» podés elegir otra carpeta en ese momento.</p>
+      </section>
+
       <section className="card" aria-labelledby="s-perms">
         <h2 id="s-perms">Permisos de sitios</h2>
         {snap.permissions.length === 0 ? (

@@ -146,7 +146,7 @@ const params = (p: Partial<ContextMenuParams>): ContextMenuParams =>
   }) as ContextMenuParams;
 
 const pageActions = (): PageMenuActions => ({
-  canGoBack: true, canGoForward: false, searchEngineName: 'Google',
+  canGoBack: true, canGoForward: false, searchEngineName: 'Google', saveAs: vi.fn(),
   openInNewTab: vi.fn(), openInNewWindow: vi.fn(), copyText: vi.fn(), copyImageAt: vi.fn(), searchFor: vi.fn(), edit: vi.fn(),
   replaceMisspelling: vi.fn(), back: vi.fn(), forward: vi.fn(), reload: vi.fn(), inspect: vi.fn(),
 });
@@ -159,7 +159,7 @@ describe('menú contextual de la página', () => {
   it('en un enlace: abrir en pestaña/ventana nueva y copiar la dirección, con el referrer de la página', () => {
     const a = pageActions();
     const items = pageMenuTemplate(params({ linkURL: 'https://b.com/x' }), a);
-    expect(labels(items)).toEqual(['Abrir enlace en una pestaña nueva', 'Abrir enlace en una ventana nueva', 'Copiar dirección del enlace', '—', 'Inspeccionar']);
+    expect(labels(items)).toEqual(['Abrir enlace en una pestaña nueva', 'Abrir enlace en una ventana nueva', 'Guardar enlace como…', 'Copiar dirección del enlace', '—', 'Inspeccionar']);
     click(items, 'Abrir enlace en una pestaña nueva');
     expect(a.openInNewTab).toHaveBeenCalledWith('https://b.com/x', { url: 'https://a.com/', policy: 'strict-origin-when-cross-origin' });
     click(items, 'Copiar dirección del enlace');
@@ -176,10 +176,12 @@ describe('menú contextual de la página', () => {
     click(items, 'Copiar dirección de correo');
     expect(a.copyText).toHaveBeenCalledWith('ana@x.com');
   });
-  it('en una imagen: abrir, copiar imagen y copiar su dirección (sin "Guardar imagen", que llega con las descargas)', () => {
+  it('en una imagen: abrir, guardar como, copiar imagen y copiar su dirección', () => {
     const a = pageActions();
     const items = pageMenuTemplate(params({ mediaType: 'image', srcURL: 'https://a.com/i.png' }), a);
-    expect(labels(items)).toEqual(['Abrir imagen en una pestaña nueva', 'Copiar imagen', 'Copiar dirección de la imagen', '—', 'Inspeccionar']);
+    expect(labels(items)).toEqual(['Abrir imagen en una pestaña nueva', 'Guardar imagen como…', 'Copiar imagen', 'Copiar dirección de la imagen', '—', 'Inspeccionar']);
+    click(items, 'Guardar imagen como…');
+    expect(a.saveAs).toHaveBeenCalledWith('https://a.com/i.png');
     click(items, 'Copiar imagen');
     expect(a.copyImageAt).toHaveBeenCalledWith(10, 20);
   });

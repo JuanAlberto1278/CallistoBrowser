@@ -28,6 +28,8 @@ export interface TabOptions {
   openerId?: number | null;
   /** Pestaña restaurada que todavía no se cargó: se carga recién cuando se la activa. */
   pending?: SavedTab;
+  /** Pestaña nueva abierta por el usuario: mientras esté vacía muestra la página de nueva pestaña. */
+  newTabPage?: boolean;
 }
 
 interface FailedLoad {
@@ -74,6 +76,8 @@ export class Tab extends EventEmitter<TabEvents> {
   /** Pestaña desde la que se abrió (para ubicar las pestañas hijas a su derecha). */
   openerId: number | null;
   openHandler: OpenHandler | null = null;
+  /** Abierta por el usuario como pestaña nueva (no por una página): vacía, muestra la página de nueva pestaña. */
+  readonly newTabPage: boolean;
 
   private pending: SavedTab | null;
   private failed: FailedLoad | null = null;
@@ -99,6 +103,7 @@ export class Tab extends EventEmitter<TabEvents> {
     this.pending = opts.pending ?? null;
     this.kind = opts.kind ?? (opts.pending && internalPageOf(opts.pending.url) ? 'internal' : 'web');
     this.faviconKey = opts.pending?.faviconKey ?? null;
+    this.newTabPage = opts.newTabPage ?? (!!opts.pending && (opts.pending.url === 'about:blank' || opts.pending.url === ''));
     const adopt = opts.adopt;
     const secure = { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, safeDialogs: true } as const;
     this.view = adopt
@@ -293,6 +298,11 @@ export class Tab extends EventEmitter<TabEvents> {
     return (url === '' || url === 'about:blank') && !this.webContents.isLoading();
   }
 
+  /** ¿Se muestra ahora la página de nueva pestaña (encima de esta pestaña vacía)? */
+  get showsNewTabPage(): boolean {
+    return this.newTabPage && this.kind === 'web' && this.isBlank;
+  }
+
   /** Página interna que muestra (si es una pestaña interna). */
   get internalPage() {
     return this.kind === 'internal' ? internalPageOf(this.url) : null;
@@ -316,6 +326,7 @@ export class Tab extends EventEmitter<TabEvents> {
       zoomPercent: zoomPercent(p ? (this.savedZoom(url) ?? 1) : wc.getZoomFactor()),
       find: this.findState,
       notice: this.noticeState,
+      newTabPage: this.showsNewTabPage,
       permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
     };
   }

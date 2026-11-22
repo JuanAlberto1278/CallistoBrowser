@@ -1,6 +1,7 @@
-import { app, session } from 'electron';
+import { app, session, webContents } from 'electron';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { configureUserData, prepareQuarantine } from './paths';
+import { configureUserData, prepareQuarantine, quarantineDir } from './paths';
 import { configureTestMode } from './test-mode';
 import { registerInternalScheme, serveInternalPages, serveInternalUi, UI_ORIGIN } from './internal-protocol';
 import { Profile } from './profile';
@@ -44,6 +45,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    // La carpeta Descargas real del usuario, antes de apuntar la de la app a la cuarentena privada. Con una carpeta de
+    // datos aislada (pruebas automáticas), las descargas van dentro de ella: nunca a la carpeta Descargas real.
+    const userDownloads = process.env.CALLISTO_USER_DATA_DIR ? join(app.getPath('userData'), 'Downloads') : app.getPath('downloads');
     prepareQuarantine();
     // Identidad de la app para las notificaciones de Windows (si un sitio tiene permiso para mostrarlas)
     app.setAppUserModelId('app.callisto.browser');
@@ -70,14 +74,30 @@ if (!app.requestSingleInstanceLock()) {
       webContentPreload: join(__dirname, '../preload/web-content.js'),
       dataDir: join(app.getPath('userData'), 'Profiles', 'default'),
       internal: { session: internalSession, preload: join(__dirname, '../preload/internal.js') },
+      defaultDownloadDir: userDownloads,
     });
     profile.history.expire();
-    profile.on('download-blocked', (info, wc) => {
-      Tab.fromWebContents(wc)?.showNotice(
-        'warning',
-        `Callisto bloqueó la descarga de «${info.filename}». Las descargas todavía no están disponibles en esta versión; no se guardó nada.`,
-      );
+    // Descargas: cada pedido de autorización se muestra en la ventana de la pestaña que lo inició
+    profile.downloads.on('request', (req) => {
+      const wc = req.sourceId !== null ? webContents.fromId(req.sourceId) : undefined;
+      const tab = wc ? Tab.fromWebContents(wc) : undefined;
+      let win = (tab && BrowserWindowController.ofTab(tab)) ?? BrowserWindowController.current();
+      // Un enlace que abrió una pestaña vacía solo para descargar (target=_blank): se cierra, como en Chrome,
+      // y el pedido queda en la pestaña de origen
+      if (tab && win && tab.isBlank && !tab.newTabPage && tab.openerId !== null && tab.webContents.navigationHistory.length() <= 1) {
+        const opener = win.tabs.find((t) => t.id === tab.openerId);
+        if (opener) req.sourceId = opener.webContents.id;
+        win.closeTab(tab);
+        if (win.closing) win = BrowserWindowController.current();
+      }
+      if (!win) {
+        profile.downloads.deny(req.id);
+        return;
+      }
+      req.windowId = win.id;
+      win.onDownloadRequest();
     });
+    profile.downloads.on('changed', () => BrowserWindowController.refreshAll());
     profile.on('permission-request', (wc, request) => {
       const tab = Tab.fromWebContents(wc);
       if (tab) tab.requestPermission(request);
@@ -100,9 +120,18 @@ if (!app.requestSingleInstanceLock()) {
     );
     closedTabs.onChange = () => saver.markDirty();
     app.on('before-quit', () => saver.finalSave());
-    // La base se cierra en el último momento del proceso: después de 'will-quit' Chromium todavía puede consultar
-    // permisos (service workers), y una base ya cerrada provocaba el error "database is not open".
-    process.once('exit', () => profile.close());
+    // La base de datos NO se cierra explícitamente: durante el cierre Chromium sigue emitiendo eventos (permisos que
+    // consultan los service workers, títulos de páginas que terminan de cargar…), incluso después de 'exit', y una base
+    // cerrada provocaba "database is not open". SQLite en modo WAL ya tiene a salvo todo lo confirmado; la base se
+    // cierra sola al terminar el proceso y se pone al día al volver a abrirla.
+    process.once('exit', () => {
+      // Cuarentena privada de descargas: nada debe quedar ahí
+      try {
+        for (const f of readdirSync(quarantineDir())) rmSync(join(quarantineDir(), f), { recursive: true, force: true });
+      } catch {
+        /* se limpia también al arrancar */
+      }
+    });
 
     const ctx: WindowContext = { profile, uiSession, uiUrl, uiPreload: join(__dirname, '../preload/ui.js'), closedTabs, session: saver };
 
