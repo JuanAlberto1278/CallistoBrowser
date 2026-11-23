@@ -160,6 +160,36 @@ test('arrastrar una pestaña adentro de un grupo y arrastrar el grupo entero', a
   await expect.poll(titles).toEqual(['Buscar', 'Página 1', 'Página 3', 'Página 2']);
 });
 
+test('zona del grupo: soltar entre el encabezado y su primera pestaña une al grupo; a la izquierda del encabezado, no', async () => {
+  await threeTabs();
+  await groupFirstTab('Zona');
+  const grouped = () => c.ui.locator('[data-testid="tab"][data-group-id]:not([data-group-id=""])');
+  const chip = (await chips().first().boundingBox())!;
+
+  // Página 3 sobre la mitad derecha del encabezado: entra al grupo, primera
+  await tabs().nth(2).dragTo(chips().first(), { targetPosition: { x: chip.width - 3, y: chip.height / 2 } });
+  await expect.poll(titles).toEqual(['Página 3', 'Página 1', 'Página 2']);
+  await expect(grouped()).toHaveCount(2);
+  await expect(tabs().nth(0)).toHaveAttribute('data-group-id', /\d+/);
+
+  // Página 2 sobre la mitad izquierda del encabezado: queda antes del grupo, sin grupo
+  await tabs().nth(2).dragTo(chips().first(), { targetPosition: { x: 3, y: chip.height / 2 } });
+  await expect.poll(titles).toEqual(['Página 2', 'Página 3', 'Página 1']);
+  await expect(grouped()).toHaveCount(2);
+  await expect(tabs().nth(0)).toHaveAttribute('data-group-id', '');
+
+  // Una del grupo soltada sobre una pestaña sin grupo: sale del grupo
+  const first = (await tabs().nth(0).boundingBox())!;
+  await tabs().nth(2).dragTo(tabs().nth(0), { targetPosition: { x: first.width - 4, y: first.height / 2 } });
+  await expect.poll(titles).toEqual(['Página 2', 'Página 1', 'Página 3']);
+  await expect(grouped()).toHaveCount(1);
+  await expect(tabs().nth(1)).toHaveAttribute('data-group-id', '');
+});
+
+test('sin la barra de menú predeterminada de Electron', async () => {
+  expect(await c.app.evaluate(({ Menu }) => Menu.getApplicationMenu() === null)).toBe(true);
+});
+
 test('los grupos (nombre, color y contraído) vuelven al reiniciar', async () => {
   await threeTabs();
   await groupFirstTab('Persistente');

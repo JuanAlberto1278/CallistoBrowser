@@ -1,4 +1,4 @@
-import { app, session } from 'electron';
+import { app, Menu, session } from 'electron';
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { configureUserData, prepareQuarantine, quarantineDir } from './paths';
@@ -42,6 +42,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    // Sin la barra de menú predeterminada de Electron ("File Edit View Window", en inglés): Callisto tiene su propio
+    // menú (⋯) y atajos, como Chrome y Edge. Copiar, pegar, etc. siguen funcionando: los maneja Chromium.
+    Menu.setApplicationMenu(null);
     // La carpeta Descargas real del usuario, antes de apuntar la de la app a la cuarentena privada. Con una carpeta de
     // datos aislada (pruebas automáticas), las descargas van dentro de ella: nunca a la carpeta Descargas real.
     const userDownloads = process.env.CALLISTO_USER_DATA_DIR ? join(app.getPath('userData'), 'Downloads') : app.getPath('downloads');

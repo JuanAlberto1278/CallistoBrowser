@@ -721,6 +721,9 @@ html, body, #root {
 .group-chip.untitled { width: 14px; height: 14px; padding: 0; border-radius: 50%; }
 .group-chip.collapsed { box-shadow: 0 0 0 2px var(--strip), 0 0 0 3px var(--group); }
 .group-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Al arrastrar una pestaña a la zona del grupo: el encabezado se resalta (va a entrar al grupo) */
+.group-chip.drop-join { box-shadow: 0 0 0 2px var(--strip), 0 0 0 4px var(--group); }
+.tab.grouped.drop-before .tab-inner { box-shadow: inset 2px 0 0 var(--group), inset 0 -2px 0 var(--group); }
 .group-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab.grouped .tab-inner { box-shadow: inset 0 -2px 0 var(--group); }
 .tab.grouped .tab-inner.active { box-shadow: 0 0 0 1px var(--border), inset 0 -2px 0 var(--group); }

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type DragEvent } from 'react';
 import type { TabState } from '../../shared/ipc';
 import { displayUrl } from '../../shared/omnibox';
-import { GROUP_COLORS, groupAtDrop, type TabGroupState } from '../../shared/tab-groups';
+import { GROUP_COLORS, type TabGroupState } from '../../shared/tab-groups';
 import { CloseIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon } from './icons';
 
 const DRAG_TAB = 'application/x-callisto-tab';
@@ -25,45 +25,67 @@ interface Props {
 
 type Dragging = { kind: 'tab'; id: number } | { kind: 'group'; id: number };
 
+/** Dónde caería lo que se arrastra: posición en la lista completa y grupo al que entraría una pestaña. */
+interface Drop {
+  index: number;
+  groupId: number | null;
+}
+
 export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
   const api = window.callisto;
   const scroller = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<Dragging | null>(null);
-  /** Posición de inserción (0..n, en la lista completa de pestañas) mientras se arrastra. */
-  const [dropAt, setDropAt] = useState<number | null>(null);
+  /** Dónde caería mientras se arrastra (posición 0..n en la lista completa de pestañas, y grupo). */
+  const [drop, setDrop] = useState<Drop | null>(null);
+  const dropAt = drop?.index ?? null;
   const groupById = new Map(groups.map((g) => [g.id, g]));
 
   useEffect(() => {
     scroller.current?.querySelector<HTMLElement>(`[data-tab-id="${activeId}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeId, tabs.length]);
 
-  const onDragOver = (e: DragEvent<HTMLElement>, index: number) => {
+  /**
+   * Zona de cada grupo: su encabezado (mitad derecha) y sus pestañas. Una pestaña soltada ahí entra al grupo; soltada
+   * sobre una pestaña sin grupo o sobre la mitad izquierda del encabezado, queda afuera.
+   */
+  const onDragOverTab = (e: DragEvent<HTMLElement>, index: number, groupId: number | null) => {
     if (!dragging) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     const r = e.currentTarget.getBoundingClientRect();
-    setDropAt(e.clientX < r.left + r.width / 2 ? index : index + 1);
+    setDrop({ index: e.clientX < r.left + r.width / 2 ? index : index + 1, groupId: dragging.kind === 'tab' ? groupId : null });
+  };
+
+  /** Sobre el encabezado de un grupo (que va antes de su primera pestaña, la `index`). */
+  const onDragOverChip = (e: DragEvent<HTMLElement>, index: number, groupId: number) => {
+    if (!dragging) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = e.currentTarget.getBoundingClientRect();
+    const inside = dragging.kind === 'tab' && e.clientX >= r.left + r.width / 2;
+    setDrop({ index, groupId: inside ? groupId : null });
   };
 
   const onDrop = (e: DragEvent) => {
-    if (!dragging || dropAt === null) return;
+    if (!dragging || !drop) return;
     e.preventDefault();
     if (dragging.kind === 'group') {
-      api.moveGroup(dragging.id, dropAt);
+      api.moveGroup(dragging.id, drop.index);
     } else {
       const from = tabs.findIndex((t) => t.id === dragging.id);
       const dragged = tabs[from];
       if (dragged) {
-        const rest = tabs.filter((t) => t.id !== dragging.id);
-        const to = dropAt > from ? dropAt - 1 : dropAt;
-        // Entre dos pestañas de un grupo: se une a ese grupo. Junto al borde de su propio grupo: sigue en él.
-        let groupId = groupAtDrop(rest, to);
-        if (groupId === null && dragged.groupId !== null && (rest[to - 1]?.groupId === dragged.groupId || rest[to]?.groupId === dragged.groupId)) groupId = dragged.groupId;
-        if (to !== from || groupId !== dragged.groupId) api.moveTab(dragging.id, to, groupId);
+        const to = drop.index > from ? drop.index - 1 : drop.index;
+        if (to !== from || drop.groupId !== dragged.groupId) api.moveTab(dragging.id, to, drop.groupId);
       }
     }
     setDragging(null);
-    setDropAt(null);
+    setDrop(null);
+  };
+
+  const endDrag = () => {
+    setDragging(null);
+    setDrop(null);
   };
 
   const visibleTabs = tabs.filter((t) => t.groupId === null || !groupById.get(t.groupId)?.collapsed).length;
@@ -108,7 +130,7 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
             <Fragment key={t.id}>
               {startsGroup && group && (
                 <div
-                  className={`group-chip ${group.collapsed ? 'collapsed' : ''} ${group.title ? '' : 'untitled'}`}
+                  className={`group-chip ${group.collapsed ? 'collapsed' : ''} ${group.title ? '' : 'untitled'} ${drop && drop.groupId === group.id && drop.index === i ? 'drop-join' : ''}`}
                   data-testid="group-chip"
                   data-group-id={group.id}
                   data-collapsed={group.collapsed}
@@ -124,11 +146,8 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                     e.dataTransfer.effectAllowed = 'move';
                     setDragging({ kind: 'group', id: group.id });
                   }}
-                  onDragEnd={() => {
-                    setDragging(null);
-                    setDropAt(null);
-                  }}
-                  onDragOver={(e) => onDragOver(e, i)}
+                  onDragEnd={endDrag}
+                  onDragOver={(e) => onDragOverChip(e, i, group.id)}
                   onClick={() => api.updateGroup(group.id, { collapsed: !group.collapsed })}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') api.updateGroup(group.id, { collapsed: !group.collapsed });
@@ -160,11 +179,8 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                     e.dataTransfer.effectAllowed = 'move';
                     setDragging({ kind: 'tab', id: t.id });
                   }}
-                  onDragOver={(e) => onDragOver(e, i)}
-                  onDragEnd={() => {
-                    setDragging(null);
-                    setDropAt(null);
-                  }}
+                  onDragOver={(e) => onDragOverTab(e, i, t.groupId)}
+                  onDragEnd={endDrag}
                   onMouseDown={(e) => {
                     if (e.button === 0 && !active) api.activateTab(t.id);
                     if (e.button === 1) e.preventDefault(); // sin el desplazamiento automático del clic medio
