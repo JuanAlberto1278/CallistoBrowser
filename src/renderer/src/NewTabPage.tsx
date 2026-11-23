@@ -40,14 +40,17 @@ function SiteIcon({ site }: { site: TopSite }) {
  * Página de nueva pestaña: saludo, búsqueda y los sitios más visitados. La dibuja la interfaz encima de la pestaña
  * vacía (no es una página web): al escribir una dirección, la pestaña navega normalmente.
  */
-export function NewTabPage({ tabId, searchEngine }: { tabId: number; searchEngine: string }) {
+export function NewTabPage({ tabId, searchEngine, isPrivate }: { tabId: number; searchEngine: string; isPrivate: boolean }) {
   const api = window.callisto;
   const [sites, setSites] = useState<TopSite[] | null>(null);
   const [text, setText] = useState('');
   const [removed, setRemoved] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
 
-  const load = () => void api.topSites().then(setSites);
+  // En privado no se muestran los sitios más visitados (son del perfil, no de esta ventana)
+  const load = () => {
+    if (!isPrivate) void api.topSites().then(setSites);
+  };
   useEffect(load, [tabId, api]);
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
@@ -66,8 +69,20 @@ export function NewTabPage({ tabId, searchEngine }: { tabId: number; searchEngin
     <div className="ntp" data-testid="new-tab-page">
       <div className="ntp-inner">
         <MoonMark />
-        <h1 className="ntp-greeting" data-testid="ntp-greeting">{greeting(now)}</h1>
+        <h1 className="ntp-greeting" data-testid="ntp-greeting">{isPrivate ? 'Ventana privada' : greeting(now)}</h1>
         <p className="ntp-date">{date.charAt(0).toUpperCase() + date.slice(1)}</p>
+        {isPrivate && (
+          <div className="ntp-private" data-testid="ntp-private">
+            <p>
+              Al cerrar todas las ventanas privadas, Callisto borra el historial, las cookies, las sesiones iniciadas y los datos de los
+              sitios que usaste en ellas.
+            </p>
+            <p className="muted">
+              Lo que sí queda: los archivos que descargues y los favoritos que agregues. Tu actividad puede seguir siendo visible para los
+              sitios que visitás, tu empresa o escuela, y tu proveedor de internet.
+            </p>
+          </div>
+        )}
 
         <form
           className="ntp-search"

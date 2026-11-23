@@ -146,6 +146,14 @@ export interface OpenResult {
  * Abre (o crea) la base del perfil. Si está dañada y no se puede abrir, se aparta con otro nombre, sin borrarla, y se
  * empieza una nueva: es preferible un historial vacío a un navegador que no arranca.
  */
+/** Base en memoria (ventanas privadas): mismas tablas, nada en disco; desaparece al descartarla. */
+export function openMemoryDatabase(): DatabaseSync {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON;');
+  migrate(db);
+  return db;
+}
+
 export function openDatabase(file: string): OpenResult {
   mkdirSync(dirname(file), { recursive: true });
   try {

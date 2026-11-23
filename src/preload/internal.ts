@@ -34,6 +34,13 @@ const api: CallistoInternalApi = {
     remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.bookmarksRemove, Number(id)),
     open: (url, where) => ipcRenderer.send(INTERNAL_IPC.bookmarksOpen, String(url), String(where)),
   },
+  profiles: {
+    list: () => ipcRenderer.invoke(INTERNAL_IPC.profilesList),
+    create: (name, color) => ipcRenderer.invoke(INTERNAL_IPC.profilesCreate, String(name), String(color)),
+    update: (id, patch) => ipcRenderer.invoke(INTERNAL_IPC.profilesUpdate, String(id), { name: patch.name === undefined ? undefined : String(patch.name), color: patch.color === undefined ? undefined : String(patch.color) }),
+    remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.profilesRemove, String(id)),
+    open: (id) => ipcRenderer.send(INTERNAL_IPC.profilesOpen, String(id)),
+  },
   openPage: (page) => ipcRenderer.send(INTERNAL_IPC.openPage, String(page)),
 };
 

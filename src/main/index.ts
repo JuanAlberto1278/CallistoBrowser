@@ -1,16 +1,13 @@
-import { app, session, webContents } from 'electron';
+import { app, session } from 'electron';
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { configureUserData, prepareQuarantine, quarantineDir } from './paths';
 import { configureTestMode } from './test-mode';
 import { registerInternalScheme, serveInternalPages, serveInternalUi, UI_ORIGIN } from './internal-protocol';
-import { Profile } from './profile';
-import { BrowserWindowController, type WindowContext } from './window';
-import { Tab } from './tab';
-import { ClosedTabs } from './closed-tabs';
-import { SessionStore } from './session-store';
-import { SessionSaver } from './session-saver';
-import { registerIpc } from './ipc';
+import { BrowserWindowController } from './window';
+import { registerIpc, registerProfilesIpc } from './ipc';
+import { ProfileManager } from './profiles';
+import { ProfileRegistry } from './profile-registry';
 import { buildUserAgent } from '../shared/user-agent';
 
 // ---------------------------------------------------------------- antes de que Electron esté listo
@@ -69,58 +66,25 @@ if (!app.requestSingleInstanceLock()) {
     internalSession.setPermissionCheckHandler(() => false);
     serveInternalPages(internalSession, join(__dirname, '../renderer'), devUrl || undefined);
 
-    const profile = new Profile('default', {
-      userAgent,
-      webContentPreload: join(__dirname, '../preload/web-content.js'),
-      dataDir: join(app.getPath('userData'), 'Profiles', 'default'),
-      internal: { session: internalSession, preload: join(__dirname, '../preload/internal.js') },
-      defaultDownloadDir: userDownloads,
-    });
-    profile.history.expire();
-    // Descargas: cada pedido de autorización se muestra en la ventana de la pestaña que lo inició
-    profile.downloads.on('request', (req) => {
-      const wc = req.sourceId !== null ? webContents.fromId(req.sourceId) : undefined;
-      const tab = wc ? Tab.fromWebContents(wc) : undefined;
-      let win = (tab && BrowserWindowController.ofTab(tab)) ?? BrowserWindowController.current();
-      // Un enlace que abrió una pestaña vacía solo para descargar (target=_blank): se cierra, como en Chrome,
-      // y el pedido queda en la pestaña de origen
-      if (tab && win && tab.isBlank && !tab.newTabPage && tab.openerId !== null && tab.webContents.navigationHistory.length() <= 1) {
-        const opener = win.tabs.find((t) => t.id === tab.openerId);
-        if (opener) req.sourceId = opener.webContents.id;
-        win.closeTab(tab);
-        if (win.closing) win = BrowserWindowController.current();
-      }
-      if (!win) {
-        profile.downloads.deny(req.id);
-        return;
-      }
-      req.windowId = win.id;
-      win.onDownloadRequest();
-    });
-    profile.downloads.on('changed', () => BrowserWindowController.refreshAll());
-    profile.on('permission-request', (wc, request) => {
-      const tab = Tab.fromWebContents(wc);
-      if (tab) tab.requestPermission(request);
-      else request.respond(false, false);
-    });
-    profile.on('settings-changed', () => BrowserWindowController.refreshAll());
-    profile.on('bookmarks-changed', () => BrowserWindowController.refreshAll());
-
-    // Sesión de ventanas y pestañas: se guarda mientras se navega y se recupera al arrancar
-    const sessionStore = new SessionStore(profile.kv);
-    const saved = sessionStore.load();
-    const closedTabs = new ClosedTabs(saved.closed);
-    const saver = new SessionSaver(
-      sessionStore,
-      () => ({
-        version: 1,
-        windows: [...BrowserWindowController.all].filter((w) => !w.closing || BrowserWindowController.all.size === 1).map((w) => w.saved()),
-        closed: closedTabs.entries(),
-      }),
-      (w) => BrowserWindowController.all.size === 1 && BrowserWindowController.all.has(w as BrowserWindowController),
+    // Perfiles: cada uno con su sesión de Chromium, su base y sus ventanas (ver profiles.ts)
+    const registry = new ProfileRegistry(join(app.getPath('userData'), 'profiles.json'));
+    const profiles = new ProfileManager(
+      {
+        userDataDir: app.getPath('userData'),
+        userAgent,
+        webContentPreload: join(__dirname, '../preload/web-content.js'),
+        internal: { session: internalSession, preload: join(__dirname, '../preload/internal.js') },
+        defaultDownloadDir: userDownloads,
+        uiSession,
+        uiUrl,
+        uiPreload: join(__dirname, '../preload/ui.js'),
+      },
+      registry,
     );
-    closedTabs.onChange = () => saver.markDirty();
-    app.on('before-quit', () => saver.finalSave());
+    profiles.cleanupDeleted();
+    registerProfilesIpc(profiles);
+
+    app.on('before-quit', () => profiles.finalSaveAll());
     // La base de datos NO se cierra explícitamente: durante el cierre Chromium sigue emitiendo eventos (permisos que
     // consultan los service workers, títulos de páginas que terminan de cargar…), incluso después de 'exit', y una base
     // cerrada provocaba "database is not open". SQLite en modo WAL ya tiene a salvo todo lo confirmado; la base se
@@ -134,22 +98,10 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
 
-    const ctx: WindowContext = { profile, uiSession, uiUrl, uiPreload: join(__dirname, '../preload/ui.js'), closedTabs, session: saver };
-
+    // Al arrancar: los perfiles que estaban abiertos al salir (o el último usado). La URL recibida, en el último.
     const startUrl = urlFromArgv(process.argv);
-    const restore = profile.settings.startup === 'restore' ? saved.windows : [];
-    for (const w of restore) {
-      new BrowserWindowController(ctx, { restore: { tabs: w.tabs, active: w.active }, bounds: w.bounds, maximized: w.maximized });
-    }
-    if (restore.length === 0) new BrowserWindowController(ctx, { url: startUrl });
-    else if (startUrl) BrowserWindowController.current()?.newTab({ url: startUrl });
-
-    if (profile.recoveredDatabase) {
-      BrowserWindowController.current()?.active.showNotice(
-        'warning',
-        'Los datos de Callisto (historial, sesión) estaban dañados y se empezó de nuevo. La copia dañada se guardó aparte.',
-      );
-    }
+    const toOpen = registry.lastActive.length ? [...registry.lastActive] : [registry.lastUsed];
+    toOpen.forEach((id, i) => profiles.openProfile(id, i === toOpen.length - 1 && startUrl ? { url: startUrl } : {}));
 
     // Abrir Callisto otra vez: la URL recibida va a una pestaña nueva de la ventana actual (como Chrome);
     // sin URL, se enfoca la ventana.
@@ -157,7 +109,7 @@ if (!app.requestSingleInstanceLock()) {
       const url = urlFromArgv(argv);
       const current = BrowserWindowController.current();
       if (!current) {
-        new BrowserWindowController(ctx, { url });
+        profiles.openProfile(registry.lastUsed, { url });
         return;
       }
       if (url) current.newTab({ url });

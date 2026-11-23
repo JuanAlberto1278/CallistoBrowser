@@ -10,6 +10,7 @@ import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
 import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type WindowState } from '../shared/ipc';
 import { BAR_FOLDER_ID, OTHER_FOLDER_ID, isBookmarkableUrl, type BookmarkEditorState, type BookmarkNode } from '../shared/bookmarks';
 import { bookmarkItemMenu, bookmarksSubmenu, folderMenu, nodesMenu } from './bookmark-menus';
+import type { ProfileInfo, WindowProfile } from '../shared/profiles';
 import { sanitizeFileName, siteOf } from '../shared/downloads';
 import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
@@ -24,6 +25,16 @@ export interface SessionSaver {
   finalSave(): void;
 }
 
+/** Perfiles: abrir otros perfiles o ventanas privadas, y avisar del ciclo de vida de las ventanas. */
+export interface ProfilesApi {
+  openProfile(id: string, opts?: { url?: string }): BrowserWindowController;
+  openPrivateWindow(from: WindowContext, url?: string): BrowserWindowController;
+  list(): ProfileInfo[];
+  windowProfile(ctx: WindowContext): WindowProfile;
+  windowOpened(w: BrowserWindowController): void;
+  windowClosed(w: BrowserWindowController): void;
+}
+
 export interface WindowContext {
   profile: Profile;
   uiSession: Session;
@@ -31,6 +42,7 @@ export interface WindowContext {
   uiPreload: string;
   closedTabs: ClosedTabs;
   session: SessionSaver;
+  profiles: ProfilesApi;
 }
 
 export interface WindowOptions {
@@ -168,8 +180,8 @@ export class BrowserWindowController {
     this.win.on('close', () => {
       // Si quedan otras ventanas, esta va a "cerradas recientemente"; si es la última, queda como sesión guardada.
       if (BrowserWindowController.all.size > 1) this.recordClosedWindow();
-      // Descargas esperando autorización en esta ventana: pasan a otra; si no queda ninguna, se rechazan (nada se guarda)
-      const other = [...BrowserWindowController.all].find((w) => w !== this && !w.closing);
+      // Descargas esperando autorización en esta ventana: pasan a otra del mismo perfil; si no hay, se rechazan
+      const other = [...BrowserWindowController.all].find((w) => w !== this && !w.closing && w.ctx.profile === ctx.profile);
       for (const r of ctx.profile.downloads.requestsFor(this.id)) r.windowId = other ? other.id : null;
       ctx.profile.downloads.denyWithoutWindow();
       if (other) other.queueState();
@@ -187,6 +199,7 @@ export class BrowserWindowController {
       this.attached.clear();
       if (!this.uiContents.isDestroyed()) this.uiContents.close();
       this.ctx.session.markDirty();
+      this.ctx.profiles.windowClosed(this);
     });
 
     BrowserWindowController.all.add(this);
@@ -206,6 +219,7 @@ export class BrowserWindowController {
     }
 
     this.uiContents.loadURL(ctx.uiUrl).catch(() => {});
+    ctx.profiles.windowOpened(this);
   }
 
   get active(): Tab {
@@ -464,12 +478,13 @@ export class BrowserWindowController {
 
   private sendState(): void {
     // La pestaña activa ya no es de esta ventana: la ventana se está cerrando (p. ej. un popup que se cerró solo)
-    if (this.win.isDestroyed() || !this.activeTab || !this.tabs.includes(this.activeTab)) return;
+    if (this.closing || this.win.isDestroyed() || !this.activeTab || !this.tabs.includes(this.activeTab)) return;
     this.layout();
     const state: WindowState = {
       tabs: this.tabs.map((t) => t.state),
       activeTabId: this.activeTab.id,
       searchEngine: this.ctx.profile.searchEngineName,
+      profile: this.ctx.profiles.windowProfile(this.ctx),
       downloads: this.downloadsState(),
       bookmarks: this.bookmarksState(),
     };
@@ -477,7 +492,13 @@ export class BrowserWindowController {
     const active = state.tabs.find((t) => t.id === state.activeTabId);
     if (!active) return;
     const blank = !active.url || active.url === 'about:blank';
-    this.win.setTitle(`${!blank && active.title ? active.title : 'Nueva pestaña'} — Callisto`);
+    // Con varios perfiles (o en privado) el título dice de cuál es la ventana
+    const suffix = state.profile.private ? ' (Privada)' : state.profile.several ? ` (${state.profile.name})` : '';
+    try {
+      this.win.setTitle(`${!blank && active.title ? active.title : 'Nueva pestaña'} — Callisto${suffix}`);
+    } catch {
+      return; // la ventana se está destruyendo (al salir): no hay a quién mostrarle nada
+    }
     if (!this.uiReady || this.uiContents.isDestroyed()) return;
 
     // Favicons: se envían una sola vez por ventana; el estado solo lleva la clave.
@@ -893,6 +914,7 @@ export class BrowserWindowController {
       case 'new-tab': this.newTab(); return;
       case 'close-tab': return this.closeTab(tab);
       case 'new-window': new BrowserWindowController(this.ctx); return;
+      case 'new-private-window': this.ctx.profiles.openPrivateWindow(this.ctx); return;
       case 'close-window': return this.win.close();
       case 'next-tab': return this.activate(this.tabs[cycleIndex(this.tabs.length, index, 1)]!);
       case 'prev-tab': return this.activate(this.tabs[cycleIndex(this.tabs.length, index, -1)]!);
@@ -927,6 +949,31 @@ export class BrowserWindowController {
     Menu.buildFromTemplate(template).popup({ window: this.win });
   }
 
+  /** Menú del botón de perfil: cambiar de perfil, ventana privada, agregar o administrar perfiles. */
+  showProfileMenu(): void {
+    const me = this.ctx.profiles.windowProfile(this.ctx);
+    const items: MenuItemConstructorOptions[] = [];
+    if (me.private) items.push({ label: `Ventana privada de «${me.name.replace(/&/g, '&&')}»`, enabled: false }, { type: 'separator' });
+    for (const p of this.ctx.profiles.list()) {
+      items.push({
+        label: p.name.replace(/&/g, '&&'),
+        type: 'radio',
+        checked: !me.private && p.id === me.id,
+        click: () => {
+          if (me.private || p.id !== me.id) this.ctx.profiles.openProfile(p.id);
+        },
+      });
+    }
+    items.push(
+      { type: 'separator' },
+      { label: 'Nueva ventana privada', accelerator: 'Ctrl+Shift+N', registerAccelerator: false, click: () => { this.ctx.profiles.openPrivateWindow(this.ctx); } },
+      { type: 'separator' },
+      { label: 'Agregar perfil…', click: () => this.openInternalPage('profiles') },
+      { label: 'Administrar perfiles', click: () => this.openInternalPage('profiles') },
+    );
+    this.popup(items);
+  }
+
   /** Menú "Configuración y más" (botón ⋯ de la barra). */
   showAppMenu(): void {
     const bm = this.bookmarksState();
@@ -942,6 +989,7 @@ export class BrowserWindowController {
         {
           newTab: () => this.newTab(),
           newWindow: () => { new BrowserWindowController(this.ctx); },
+          newPrivateWindow: () => { this.ctx.profiles.openPrivateWindow(this.ctx); },
           history: () => this.openInternalPage('history'),
           downloads: () => this.openInternalPage('downloads'),
           zoom: (d) => this.activeTab.zoom(d),
@@ -986,6 +1034,7 @@ export class BrowserWindowController {
           this.newTab({ url, referrer, index: this.childIndex(tab), activate: false, openerId: tab.id });
         },
         openInNewWindow: (url, referrer) => { new BrowserWindowController(this.ctx, { url, referrer }); },
+        openInPrivateWindow: (url) => { this.ctx.profiles.openPrivateWindow(this.ctx, url); },
         copyText: (text) => { clipboard.writeText(text).catch(() => {}); },
         copyImageAt: (x, y) => wc.copyImageAt(x, y),
         saveAs: (url) => { void this.saveUrlAs(url, tab); },

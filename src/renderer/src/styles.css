@@ -133,7 +133,8 @@ html, body, #root {
 .loading-bar {
   height: 2px;
   flex-shrink: 0;
-  background: transparent;
+  /* Del color de la barra (no transparente: se vería el fondo de la ventana, que en privado no coincide) */
+  background: var(--bg);
   overflow: hidden;
   position: relative;
 }
@@ -623,3 +624,78 @@ html, body, #root {
 .field input:focus, .field select:focus { outline: 0; border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
 .bookmark-editor .prompt-buttons { justify-content: flex-end; margin-top: 2px; }
 .bookmark-editor .prompt-warning { margin: 0; }
+
+/* ---------------------------------------------------------------- perfiles y ventanas privadas */
+
+/* Con varios perfiles, una franja del color del perfil arriba de la ventana */
+.chrome[style*="--profile-color"] .tabstrip-row { box-shadow: inset 0 3px 0 var(--profile-color); }
+
+.profile-button {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0 3px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+.profile-button:hover { filter: brightness(1.1); }
+.profile-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.private-badge {
+  flex-shrink: 0;
+  height: 28px;
+  margin: 0 3px;
+  padding: 0 10px 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--private-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.private-badge:hover { filter: brightness(1.1); }
+
+/* Ventana privada: oscura siempre (también con Windows en modo claro), para distinguirla de un vistazo */
+:root { --private-accent: #6b4fc4; }
+.chrome[data-private="true"] {
+  --bg: #2a2438;
+  --fg: #f1eefb;
+  --muted: #bdb4d6;
+  --hover: rgba(255, 255, 255, 0.08);
+  --active: rgba(255, 255, 255, 0.14);
+  --field: #1d1828;
+  --field-border: #4b4163;
+  --focus: #a891ff;
+  --border: #3d3452;
+  --strip: #1b1726;
+  --tab-hover: rgba(255, 255, 255, 0.06);
+  --tab-border: rgba(255, 255, 255, 0.14);
+  --ntp-bg: #1f1a2c;
+  --ntp-glow: #322a48;
+  color: var(--fg);
+  color-scheme: dark;
+}
+.chrome[data-private="true"] .ntp { --moon-light: #cfc6ea; --moon-dark: #6f6293; --moon-crater: rgba(20, 15, 35, 0.3); color-scheme: dark; }
+
+.ntp-private {
+  max-width: 560px;
+  margin: -12px 0 24px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ntp-private p { margin: 0 0 8px; }
+.ntp-private p:last-child { margin: 0; }

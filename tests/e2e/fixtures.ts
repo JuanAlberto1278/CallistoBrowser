@@ -89,6 +89,14 @@ export async function startServer(): Promise<TestServer> {
         return html(page('Inicio'));
       case '/page2':
         return html(page('Página 2'));
+      case '/datos/guardar': {
+        // Guarda el mismo valor en una cookie persistente y en localStorage
+        const v = (url.searchParams.get('v') ?? 'x').replace(/[^a-z0-9-]/gi, '');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': `dato=${v}; Max-Age=86400; Path=/; SameSite=Lax` });
+        return res.end(page(`Guardado ${v}`, `<script>localStorage.setItem('dato', '${v}')</script>`));
+      }
+      case '/datos/leer':
+        return html(page('Lectura', `<script>document.title = 'Lectura: cookie=' + (document.cookie.match(/dato=([^;]*)/)?.[1] ?? 'ninguna') + ' almacenamiento=' + (localStorage.getItem('dato') ?? 'ninguno')</script>`));
       case '/dl/lab':
         return html(page('Laboratorio de descargas', DOWNLOAD_LAB));
       case '/dl/attach': {

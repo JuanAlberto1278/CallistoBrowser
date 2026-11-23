@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { session, type Session, type WebContents } from 'electron';
 import { FaviconLoader } from './favicon';
-import { openDatabase } from './db';
+import { openDatabase, openMemoryDatabase } from './db';
 import { HistoryStore } from './history-store';
 import { FaviconStore, KeyValueStore, PermissionStore, ZoomStore, type SitePermission } from './profile-store';
 import { ALWAYS_ALLOWED, sitePermissionForCheck, sitePermissionsFor, webOrigin } from './permissions';
@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS, sanitizeSettings, SEARCH_ENGINES, type Settings } fro
 import { DownloadStore } from './download-store';
 import { DownloadManager } from './downloads';
 import { BookmarkStore } from './bookmark-store';
+import type { ProfileColor } from '../shared/profiles';
 
 /** Pedido de permiso que necesita la decisión del usuario. */
 export interface PermissionRequest {
@@ -30,8 +31,15 @@ export interface ProfileOptions {
   userAgent: string;
   /** Preload que se inyecta en todas las páginas web (corrección WebAuthn). */
   webContentPreload: string;
-  /** Carpeta de datos del perfil (base de datos). */
+  /** Carpeta de datos del perfil (base de datos). No se usa en los perfiles privados. */
   dataDir: string;
+  name: string;
+  color: ProfileColor;
+  /**
+   * Perfil privado (ventanas privadas): sesión de Chromium solo en memoria y base en memoria. Usa los favoritos y la
+   * configuración del perfil de origen (como Chrome); no guarda historial, cookies ni datos de sitios.
+   */
+  private?: { parent: Profile; partition: string };
   internal: InternalPages;
   /** Carpeta Descargas de Windows (se usa si el usuario no eligió otra). */
   defaultDownloadDir: string;
@@ -46,8 +54,8 @@ type ProfileEvents = {
 
 /**
  * Un perfil = un contexto de navegación independiente: sesión de Chromium (cookies, almacenamiento, caché) más su base
- * de datos (historial, zoom por sitio, permisos, configuración, sesión de pestañas). Por ahora hay un único perfil
- * "default"; V0.7 agrega la gestión de varios.
+ * de datos (historial, zoom por sitio, permisos, configuración, favoritos, sesión de pestañas). Cada ventana pertenece a
+ * un perfil. Un perfil privado es la versión efímera de otro: todo en memoria.
  */
 export class Profile extends EventEmitter<ProfileEvents> {
   readonly session: Session;
@@ -61,26 +69,43 @@ export class Profile extends EventEmitter<ProfileEvents> {
   readonly downloads: DownloadManager;
   readonly bookmarks: BookmarkStore;
   readonly defaultDownloadDir: string;
-  /** Los perfiles privados (V0.7) no guardan historial. */
-  readonly recordsHistory = true;
+  /** Los perfiles privados no guardan historial. */
+  readonly recordsHistory: boolean;
+  readonly isPrivate: boolean;
+  /** Perfil de origen de un perfil privado. */
+  readonly parent: Profile | null;
+  name: string;
+  color: ProfileColor;
   /** Si la base estaba dañada: dónde quedó la copia apartada. */
   readonly recoveredDatabase?: string;
   private settingsValue: Settings;
 
   constructor(readonly id: string, opts: ProfileOptions) {
     super();
-    const opened = openDatabase(join(opts.dataDir, 'callisto.db'));
-    this.db = opened.db;
-    this.recoveredDatabase = opened.recoveredFrom;
+    const priv = opts.private;
+    this.isPrivate = !!priv;
+    this.parent = priv?.parent ?? null;
+    this.recordsHistory = !priv;
+    this.name = opts.name;
+    this.color = opts.color;
+    if (priv) {
+      this.db = openMemoryDatabase();
+    } else {
+      const opened = openDatabase(join(opts.dataDir, 'callisto.db'));
+      this.db = opened.db;
+      this.recoveredDatabase = opened.recoveredFrom;
+    }
     this.history = new HistoryStore(this.db);
     this.zoom = new ZoomStore(this.db);
     this.permissions = new PermissionStore(this.db);
     this.kv = new KeyValueStore(this.db);
-    this.bookmarks = new BookmarkStore(this.db);
+    // Los favoritos de una ventana privada son los del perfil de origen (como en Chrome)
+    this.bookmarks = priv ? priv.parent.bookmarks : new BookmarkStore(this.db);
     this.settingsValue = sanitizeSettings(this.kv.get('settings') ?? DEFAULT_SETTINGS);
     this.internal = opts.internal;
 
-    const ses = session.fromPartition(`persist:profile-${id}`);
+    // Privado: partición sin "persist:" = cookies, almacenamiento y caché solo en memoria
+    const ses = session.fromPartition(priv ? priv.partition : `persist:profile-${id}`);
     this.session = ses;
     this.favicons = new FaviconLoader(ses, new FaviconStore(this.db));
 
@@ -137,22 +162,25 @@ export class Profile extends EventEmitter<ProfileEvents> {
 
   /** Carpeta donde se guardan las descargas. */
   get downloadDir(): string {
+    if (this.parent) return this.parent.downloadDir;
     return this.settingsValue.downloadDir ?? this.defaultDownloadDir;
   }
 
+  /** La configuración de un perfil privado es la de su perfil de origen. */
   get settings(): Settings {
-    return this.settingsValue;
+    return this.parent ? this.parent.settings : this.settingsValue;
   }
 
   get searchTemplate(): string {
-    return SEARCH_ENGINES[this.settingsValue.searchEngine].template;
+    return SEARCH_ENGINES[this.settings.searchEngine].template;
   }
 
   get searchEngineName(): string {
-    return SEARCH_ENGINES[this.settingsValue.searchEngine].name;
+    return SEARCH_ENGINES[this.settings.searchEngine].name;
   }
 
   updateSettings(partial: unknown): Settings {
+    if (this.parent) return this.parent.updateSettings(partial);
     const merged = sanitizeSettings({ ...this.settingsValue, ...(partial && typeof partial === 'object' ? partial : {}) });
     this.settingsValue = merged;
     this.kv.set('settings', merged);
@@ -160,4 +188,13 @@ export class Profile extends EventEmitter<ProfileEvents> {
     return merged;
   }
 
+  /**
+   * Descarta un perfil privado al cerrar su última ventana: borra cookies, almacenamiento, caché y credenciales de su
+   * sesión. (La sesión en memoria no se reutiliza: la próxima ventana privada usa una nueva.)
+   */
+  async discard(): Promise<void> {
+    if (!this.isPrivate) return;
+    this.removeAllListeners();
+    await Promise.allSettled([this.session.clearStorageData(), this.session.clearCache(), this.session.clearAuthCache()]);
+  }
 }

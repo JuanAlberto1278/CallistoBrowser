@@ -7,6 +7,9 @@ import { SITE_PERMISSIONS, type SitePermission } from './profile-store';
 import { dialog } from 'electron';
 import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type OpenWhere, type SuggestResult, type TopSite } from '../shared/ipc';
 import { BookmarkError } from './bookmark-store';
+import type { ProfileManager } from './profiles';
+import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
+import type { ProfilesSnapshot } from '../shared/internal-api';
 import { INTERNAL_IPC, type ClearPeriod, type HistoryEntry, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
@@ -109,6 +112,7 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
 
   // ---------------------------------------------------------------- favoritos
 
+  ipcMain.on(IPC.profileMenu, (e) => from(e)?.showProfileMenu());
   ipcMain.on(IPC.toggleStar, (e) => from(e)?.toggleStar());
   ipcMain.on(IPC.bookmarkEditorSave, (e, v: unknown) => {
     const c = from(e);
@@ -387,7 +391,7 @@ function registerInternalIpc(): void {
   ipcMain.on(INTERNAL_IPC.openPage, (e, page: unknown) => {
     const tab = Tab.fromWebContents(e.sender);
     if (!tab || tab.kind !== 'internal' || !internalPageOf(e.senderFrame?.url ?? '')) return;
-    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks') return;
+    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks' && page !== 'profiles') return;
     BrowserWindowController.ofTab(tab)?.navigateTab(tab, `callisto://${page}`, false);
   });
 }
@@ -398,4 +402,63 @@ function hostOf(url: string): string {
   } catch {
     return '';
   }
+}
+
+// ---------------------------------------------------------------- administrar perfiles (callisto://profiles)
+
+/** API de la página de perfiles. Solo responde a esa página; crear, cambiar y eliminar pasan por el gestor. */
+export function registerProfilesIpc(manager: ProfileManager): void {
+  const snapshot = (currentId: string): ProfilesSnapshot => ({
+    profiles: manager.list().map((p) => ({ id: p.id, name: p.name, color: p.color, windows: manager.windowCount(p.id), current: p.id === currentId })),
+    colors: PROFILE_COLOR_IDS.map((id) => ({ id, name: PROFILE_COLORS[id].name, hex: PROFILE_COLORS[id].hex })),
+  });
+  const currentOf = (ctx: NonNullable<ReturnType<typeof fromInternal>>) => (ctx.profile.parent ?? ctx.profile).id;
+
+  ipcMain.handle(INTERNAL_IPC.profilesList, (e) => {
+    const ctx = fromInternal(e, 'profiles') ?? denied();
+    return snapshot(currentOf(ctx));
+  });
+  ipcMain.handle(INTERNAL_IPC.profilesCreate, (e, name: unknown, color: unknown) => {
+    fromInternal(e, 'profiles') ?? denied();
+    if (typeof name !== 'string' || !isProfileColor(color)) return { error: 'Datos no válidos.' };
+    manager.create(name, color);
+    return {};
+  });
+  ipcMain.handle(INTERNAL_IPC.profilesUpdate, (e, id: unknown, patch: unknown) => {
+    fromInternal(e, 'profiles') ?? denied();
+    if (!isProfileId(id) || !isObj(patch)) return { error: 'Datos no válidos.' };
+    try {
+      manager.update(id, { name: typeof patch.name === 'string' ? patch.name : undefined, color: isProfileColor(patch.color) ? patch.color : undefined });
+      return {};
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'No se pudo cambiar el perfil.' };
+    }
+  });
+  ipcMain.handle(INTERNAL_IPC.profilesRemove, async (e, id: unknown) => {
+    const ctx = fromInternal(e, 'profiles') ?? denied();
+    if (!isProfileId(id)) return { error: 'Datos no válidos.' };
+    const info = manager.list().find((p) => p.id === id);
+    if (!info) return { error: 'El perfil no existe.' };
+    if (manager.list().length <= 1) return { error: 'Tiene que quedar al menos un perfil.' };
+    const res = await dialog.showMessageBox(ctx.win.win, {
+      type: 'warning',
+      title: 'Eliminar perfil',
+      message: `¿Eliminar el perfil «${info.name}»?`,
+      detail: 'Se borran su historial, favoritos, cookies, sesiones iniciadas y datos de sitios, y se cierran sus ventanas. Los archivos que descargaste no se tocan.',
+      buttons: ['Eliminar', 'Cancelar'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (res.response !== 0) return { cancelled: true };
+    try {
+      await manager.remove(id);
+      return {};
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'No se pudo eliminar el perfil.' };
+    }
+  });
+  ipcMain.on(INTERNAL_IPC.profilesOpen, (e, id: unknown) => {
+    if (fromInternal(e, 'profiles') && isProfileId(id) && manager.list().some((p) => p.id === id)) manager.openProfile(id);
+  });
 }

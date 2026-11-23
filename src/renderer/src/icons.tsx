@@ -77,3 +77,7 @@ export const StarIcon = ({ filled }: { filled?: boolean }) => (
 export const EditIcon = () => (
   <svg {...base} width={14} height={14}><path d="M10.5 2.5 13.5 5.5 6 13H3v-3z" /></svg>
 );
+/** Antifaz (ventanas privadas). */
+export const MaskIcon = () => (
+  <svg {...base}><path d="M1.8 6.2c1.6-1 3.8-1.4 6.2-1.4s4.6.4 6.2 1.4c0 3-1.3 4.8-3.3 4.8-1.3 0-2-.8-2.9-.8s-1.6.8-2.9.8c-2 0-3.3-1.8-3.3-4.8Z" /><circle cx="5.4" cy="7.7" r="0.9" fill="currentColor" /><circle cx="10.6" cy="7.7" r="0.9" fill="currentColor" /></svg>
+);

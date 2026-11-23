@@ -2,12 +2,39 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { PermissionPrompt, WindowState } from '../../shared/ipc';
 import { BOOKMARKS_BAR_HEIGHT, chromeHeight, NOTICE_HEIGHT, PERMISSION_BAR_HEIGHT, TAB_STRIP_HEIGHT, TOOLBAR_HEIGHT } from '../../shared/layout';
 import { BookmarkEditor, BookmarksBar } from './Bookmarks';
+import { PROFILE_COLORS, type WindowProfile } from '../../shared/profiles';
 import { AddressBar } from './AddressBar';
 import { FindBar } from './FindBar';
 import { TabStrip } from './TabStrip';
 import { DownloadsButton, DownloadsFlyout } from './Downloads';
 import { NewTabPage } from './NewTabPage';
-import { BackIcon, CloseIcon, ForwardIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
+import { BackIcon, CloseIcon, ForwardIcon, MaskIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
+
+/** Botón de perfil: inicial con el color del perfil, o "Privada" en una ventana privada. */
+function ProfileButton({ profile }: { profile: WindowProfile }) {
+  const api = window.callisto;
+  if (profile.private) {
+    return (
+      <button className="private-badge" data-testid="profile-button" data-private="true" title={`Ventana privada (perfil ${profile.name})`} onClick={() => api.showProfileMenu()}>
+        <MaskIcon />
+        <span>Privada</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      className="profile-button"
+      data-testid="profile-button"
+      data-private="false"
+      aria-label={`Perfil: ${profile.name}`}
+      title={`Perfil: ${profile.name}`}
+      style={{ background: PROFILE_COLORS[profile.color].hex }}
+      onClick={() => api.showProfileMenu()}
+    >
+      {(profile.name.trim()[0] ?? '?').toUpperCase()}
+    </button>
+  );
+}
 
 function siteName(origin: string): string {
   try {
@@ -78,6 +105,9 @@ export function App() {
   return (
     <div
       className="chrome"
+      data-private={!!state?.profile.private}
+      data-testid="chrome"
+      style={state && state.profile.several && !state.profile.private ? { ['--profile-color' as string]: PROFILE_COLORS[state.profile.color].hex } : undefined}
       onMouseDown={() => {
         // Clic fuera del panel de descargas: se cierra (un pedido de autorización, en cambio, espera la respuesta)
         if (downloads?.panelOpen && !downloads.prompt) api.setDownloadsPanel(false);
@@ -118,6 +148,7 @@ export function App() {
           onResetZoom={() => api.resetZoom()}
         />
         {downloads && <DownloadsButton state={downloads} onClick={() => api.setDownloadsPanel(!downloads.panelOpen)} />}
+        {state && <ProfileButton profile={state.profile} />}
         <button className="icon-button" data-testid="app-menu" title="Configuración y más" aria-label="Configuración y más" onClick={() => api.showAppMenu()}>
           <MoreIcon />
         </button>
@@ -138,7 +169,7 @@ export function App() {
       )}
       {tab?.permission && <PermissionBar key={tab.permission.id} prompt={tab.permission} />}
       {tab?.find && <FindBar tabId={tab.id} find={tab.find} focusSignal={findSignal} focusHandled={findHandled} />}
-      {tab?.newTabPage && <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} />}
+      {tab?.newTabPage && <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} isPrivate={!!state?.profile.private} />}
       {bookmarks?.editor && (
         <BookmarkEditor
           editor={bookmarks.editor}

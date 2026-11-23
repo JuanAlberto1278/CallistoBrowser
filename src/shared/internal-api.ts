@@ -4,6 +4,7 @@
 import type { DownloadAction, PromptPermission } from './ipc';
 import type { DownloadEntry } from './downloads';
 import type { BookmarkNode, FolderOption } from './bookmarks';
+import type { ProfileColor } from './profiles';
 import type { SearchEngineId, Settings } from './settings';
 
 export interface HistoryEntry {
@@ -59,7 +60,17 @@ export const INTERNAL_IPC = {
   bookmarksMove: 'callisto-internal:bookmarks-move',
   bookmarksRemove: 'callisto-internal:bookmarks-remove',
   bookmarksOpen: 'callisto-internal:bookmarks-open',
+  profilesList: 'callisto-internal:profiles-list',
+  profilesCreate: 'callisto-internal:profiles-create',
+  profilesUpdate: 'callisto-internal:profiles-update',
+  profilesRemove: 'callisto-internal:profiles-remove',
+  profilesOpen: 'callisto-internal:profiles-open',
 } as const;
+
+export interface ProfilesSnapshot {
+  profiles: Array<{ id: string; name: string; color: ProfileColor; windows: number; current: boolean }>;
+  colors: Array<{ id: ProfileColor; name: string; hex: string }>;
+}
 
 export interface CallistoInternalApi {
   history: {
@@ -97,6 +108,15 @@ export interface CallistoInternalApi {
     remove(id: number): Promise<void>;
     open(url: string, where: 'current' | 'new-tab' | 'background-tab' | 'new-window'): void;
   };
+  profiles: {
+    list(): Promise<ProfilesSnapshot>;
+    /** Crea un perfil y abre una ventana con él. */
+    create(name: string, color: ProfileColor): Promise<{ error?: string }>;
+    update(id: string, patch: { name?: string; color?: ProfileColor }): Promise<{ error?: string }>;
+    /** Elimina un perfil (Callisto pide confirmación). */
+    remove(id: string): Promise<{ error?: string; cancelled?: boolean }>;
+    open(id: string): void;
+  };
   /** Abre otra página interna (p. ej. el historial desde la configuración) en esta pestaña. */
-  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks'): void;
+  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks' | 'profiles'): void;
 }

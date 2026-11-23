@@ -1,6 +1,6 @@
 // Páginas internas de Callisto (callisto://history, callisto://settings).
 
-export const INTERNAL_PAGES = ['history', 'settings', 'downloads', 'bookmarks'] as const;
+export const INTERNAL_PAGES = ['history', 'settings', 'downloads', 'bookmarks', 'profiles'] as const;
 export type InternalPage = (typeof INTERNAL_PAGES)[number];
 
 export const INTERNAL_PAGE_TITLES: Record<InternalPage, string> = {
@@ -8,6 +8,7 @@ export const INTERNAL_PAGE_TITLES: Record<InternalPage, string> = {
   settings: 'Configuración',
   downloads: 'Descargas',
   bookmarks: 'Favoritos',
+  profiles: 'Perfiles',
 };
 
 export function internalUrl(page: InternalPage): string {

@@ -4,6 +4,7 @@
 import type { SecurityLevel } from './url-security';
 import type { DownloadEntry, DownloadPrompt } from './downloads';
 import type { BookmarkEditorState, BookmarkNode } from './bookmarks';
+import type { WindowProfile } from './profiles';
 
 export interface Notice {
   id: number;
@@ -117,6 +118,8 @@ export interface WindowState {
   activeTabId: number;
   /** Nombre del buscador configurado (para los textos de la barra). */
   searchEngine: string;
+  /** Perfil de la ventana (y si es privada). */
+  profile: WindowProfile;
   downloads: DownloadsUiState;
   bookmarks: BookmarksUiState;
 }
@@ -158,6 +161,7 @@ export const IPC = {
   bookmarkFolderMenu: 'callisto:bookmark-folder-menu',
   bookmarkOverflowMenu: 'callisto:bookmark-overflow-menu',
   moveBookmark: 'callisto:move-bookmark',
+  profileMenu: 'callisto:profile-menu',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
@@ -220,6 +224,8 @@ export interface CallistoUiApi {
   showBookmarkOverflow(fromIndex: number): void;
   /** Reordenar arrastrando: mover a una carpeta, en una posición. */
   moveBookmark(id: number, parentId: number, index: number): void;
+  /** Menú del botón de perfil. */
+  showProfileMenu(): void;
   onState(cb: (state: WindowState) => void): void;
   /** Favicons nuevos: clave -> URL data: de la imagen (la interfaz los guarda). */
   onFavicons(cb: (favicons: Record<string, string>) => void): void;

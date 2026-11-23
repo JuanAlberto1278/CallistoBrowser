@@ -39,6 +39,7 @@ const api: CallistoUiApi = {
   showBookmarkFolder: (id) => ipcRenderer.send(IPC.bookmarkFolderMenu, Number(id)),
   showBookmarkOverflow: (fromIndex) => ipcRenderer.send(IPC.bookmarkOverflowMenu, Number(fromIndex)),
   moveBookmark: (id, parentId, index) => ipcRenderer.send(IPC.moveBookmark, Number(id), Number(parentId), Number(index)),
+  showProfileMenu: () => ipcRenderer.send(IPC.profileMenu),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
   },

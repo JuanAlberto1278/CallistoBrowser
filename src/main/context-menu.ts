@@ -36,6 +36,7 @@ export interface PageMenuActions {
   searchEngineName: string;
   openInNewTab(url: string, referrer?: Referrer): void;
   openInNewWindow(url: string, referrer?: Referrer): void;
+  openInPrivateWindow(url: string): void;
   copyText(text: string): void;
   copyImageAt(x: number, y: number): void;
   /** "Guardar … como…": abre el diálogo de Windows y descarga ahí (ya autorizada por el usuario). */
@@ -67,6 +68,7 @@ export function pageMenuTemplate(p: ContextMenuParams, a: PageMenuActions): Item
       items.push(
         { label: 'Abrir enlace en una pestaña nueva', click: () => a.openInNewTab(p.linkURL, p.referrerPolicy) },
         { label: 'Abrir enlace en una ventana nueva', click: () => a.openInNewWindow(p.linkURL, p.referrerPolicy) },
+        { label: 'Abrir enlace en una ventana privada', click: () => a.openInPrivateWindow(p.linkURL) },
         { label: 'Guardar enlace como…', click: () => a.saveAs(p.linkURL) },
       );
     }
@@ -170,6 +172,7 @@ export function tabMenuTemplate(info: TabMenuInfo, a: TabMenuActions): Item[] {
 export interface AppMenuActions {
   newTab(): void;
   newWindow(): void;
+  newPrivateWindow(): void;
   history(): void;
   downloads(): void;
   zoom(direction: 'in' | 'out' | 'reset'): void;
@@ -182,6 +185,7 @@ export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[] 
   return [
     { label: 'Nueva pestaña', accelerator: 'Ctrl+T', registerAccelerator: false, click: () => a.newTab() },
     { label: 'Nueva ventana', accelerator: 'Ctrl+N', registerAccelerator: false, click: () => a.newWindow() },
+    { label: 'Nueva ventana privada', accelerator: 'Ctrl+Shift+N', registerAccelerator: false, click: () => a.newPrivateWindow() },
     SEP,
     { label: 'Favoritos', submenu: info.bookmarks?.length ? info.bookmarks : [{ label: '(vacío)', enabled: false }] },
     { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },

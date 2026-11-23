@@ -11,6 +11,7 @@ export type ShortcutAction =
   | 'new-tab'
   | 'close-tab'
   | 'new-window'
+  | 'new-private-window'
   | 'close-window'
   | 'next-tab'
   | 'prev-tab'
@@ -62,6 +63,7 @@ export function matchShortcut(input: Input, ctx: { fromPage: boolean; isLoading:
   if (ctrl && shift && k === 'w') return 'close-window';
   if (ctrl && !shift && (k === 'w' || k === 'F4')) return 'close-tab';
   if (ctrl && !shift && k === 'n') return 'new-window';
+  if (ctrl && shift && k === 'n') return 'new-private-window';
   if (ctrl && shift && k === 'k') return 'duplicate-tab';
   if (ctrl && !shift && k === 'h') return 'history';
   if (ctrl && !shift && k === 'j') return 'downloads';

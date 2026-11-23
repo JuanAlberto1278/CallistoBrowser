@@ -42,6 +42,7 @@ export default defineConfig({
           settings: resolve(__dirname, 'src/renderer/settings.html'),
           downloads: resolve(__dirname, 'src/renderer/downloads.html'),
           bookmarks: resolve(__dirname, 'src/renderer/bookmarks.html'),
+          profiles: resolve(__dirname, 'src/renderer/profiles.html'),
         },
       },
     },

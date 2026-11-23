@@ -46,4 +46,28 @@ export class SessionSaver {
     this.saveNow();
     this.frozen = true;
   }
+
+  /** El perfil volvió a abrir una ventana después de cerrar la última: se vuelve a guardar. */
+  resume(): void {
+    if (!this.disabled) this.frozen = false;
+  }
+
+  /** Perfil eliminado: no se guarda nunca más. */
+  disable(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.frozen = true;
+    this.disabled = true;
+  }
+
+  private disabled = false;
 }
+
+/** Guardado de sesión de las ventanas privadas: no guarda nada. */
+export const NO_SESSION_SAVER = {
+  markDirty(): void {},
+  windowClosing(): void {},
+  finalSave(): void {},
+  resume(): void {},
+  disable(): void {},
+};
