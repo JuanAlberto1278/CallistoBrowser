@@ -464,6 +464,8 @@ export class BrowserWindowController {
     const id = nextGroupId++;
     this.groups.set(id, { id, title: '', color: nextGroupColor([...this.groups.values()].map((g) => g.color)), collapsed: false });
     tab.groupId = id;
+    // El grupo nuevo empieza a la izquierda del todo, antes de las demás pestañas y grupos
+    this.tabs = moveItem(this.tabs, this.tabs.indexOf(tab), 0);
     this.tidyGroups();
     this.groupEditorId = id; // como en Chrome: se abre el panel para ponerle nombre
     this.queueState();

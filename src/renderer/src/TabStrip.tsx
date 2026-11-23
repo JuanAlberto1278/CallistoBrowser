@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type DragEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react';
 import type { TabState } from '../../shared/ipc';
 import { displayUrl } from '../../shared/omnibox';
 import { GROUP_COLORS, type TabGroupState } from '../../shared/tab-groups';
@@ -7,7 +7,6 @@ import { CloseIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon } from './ico
 const DRAG_TAB = 'application/x-callisto-tab';
 const DRAG_GROUP = 'application/x-callisto-group';
 const TAB_WIDTH = 220;
-const CHIP_WIDTH = 120;
 
 export function tabTitle(t: TabState): string {
   if (!t.url || t.url === 'about:blank') return 'Nueva pestaña';
@@ -39,6 +38,18 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
   const [drop, setDrop] = useState<Drop | null>(null);
   const dropAt = drop?.index ?? null;
   const groupById = new Map(groups.map((g) => [g.id, g]));
+  /** Ancho real de los encabezados de grupo (con márgenes): un punto sin nombre ocupa mucho menos que uno con nombre. */
+  const [chipsWidth, setChipsWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    let w = 0;
+    scroller.current?.querySelectorAll<HTMLElement>('.group-chip').forEach((el) => {
+      const cs = getComputedStyle(el);
+      w += el.getBoundingClientRect().width + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight);
+    });
+    w = Math.ceil(w);
+    if (w !== chipsWidth) setChipsWidth(w);
+  });
 
   useEffect(() => {
     scroller.current?.querySelector<HTMLElement>(`[data-tab-id="${activeId}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -89,7 +100,6 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
   };
 
   const visibleTabs = tabs.filter((t) => t.groupId === null || !groupById.get(t.groupId)?.collapsed).length;
-  const chipCount = new Set(tabs.map((t) => t.groupId).filter((g) => g !== null)).size;
 
   return (
     <div
@@ -109,7 +119,7 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
         ref={scroller}
         // Ancho ideal: 220 px por pestaña visible (+ los encabezados de grupo); si no entra, se achica.
         // (Es explícito porque las pestañas usan container queries, que no aportan ancho propio.)
-        style={{ width: visibleTabs * TAB_WIDTH + chipCount * CHIP_WIDTH }}
+        style={{ width: visibleTabs * TAB_WIDTH + chipsWidth }}
         onWheel={(e) => {
           if (scroller.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) scroller.current.scrollLeft += e.deltaY;
         }}

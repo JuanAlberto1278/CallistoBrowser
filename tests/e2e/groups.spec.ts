@@ -186,6 +186,31 @@ test('zona del grupo: soltar entre el encabezado y su primera pestaña une al gr
   await expect(tabs().nth(1)).toHaveAttribute('data-group-id', '');
 });
 
+test('un grupo nuevo empieza a la izquierda del todo y el botón + queda junto a la última pestaña', async () => {
+  await threeTabs();
+  const gapBeforePlus = async () => {
+    const last = (await tabs().last().boundingBox())!;
+    const plus = (await c.ui.getByTestId('new-tab').boundingBox())!;
+    return plus.x - (last.x + last.width);
+  };
+  const gapWithoutGroups = await gapBeforePlus();
+
+  await tabs().nth(2).click({ button: 'right' });
+  await clickMenuItem(c.app, 'Agregar la pestaña a un grupo nuevo');
+  await expect(c.ui.getByTestId('group-editor')).toBeVisible();
+  await expect.poll(titles).toEqual(['Página 3', 'Página 1', 'Página 2']);
+  await expect(tabs().nth(0)).toHaveAttribute('data-group-id', /\d+/);
+  await c.ui.getByTestId('group-name').press('Escape'); // sin nombre: el encabezado es solo un punto
+  await expect(c.ui.getByTestId('group-editor')).toBeHidden();
+  await expect.poll(gapBeforePlus).toBeLessThanOrEqual(gapWithoutGroups + 1);
+
+  await chips().first().click({ button: 'right' });
+  await c.ui.getByTestId('group-name').fill('Un nombre bastante largo');
+  await c.ui.getByTestId('group-name').press('Enter');
+  await expect(chips()).toHaveText(['Un nombre bastante largo']);
+  await expect.poll(gapBeforePlus).toBeLessThanOrEqual(gapWithoutGroups + 1);
+});
+
 test('sin la barra de menú predeterminada de Electron', async () => {
   expect(await c.app.evaluate(({ Menu }) => Menu.getApplicationMenu() === null)).toBe(true);
 });
