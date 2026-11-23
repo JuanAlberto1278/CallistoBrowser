@@ -1,8 +1,9 @@
 import { basename, dirname, join } from 'node:path';
-import { app, BaseWindow, clipboard, dialog, Menu, MenuItem, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
+import { app, BaseWindow, clipboard, dialog, Menu, MenuItem, nativeTheme, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
 import { Tab, type TabKind } from './tab';
-import { showWindow } from './test-mode';
+import { showWindow, SLEEP_MINUTE_MS } from './test-mode';
 import { AutofillPopup } from './autofill-popup';
+import { stopOrphanServiceWorkers } from './service-worker-reaper';
 import type { Profile } from './profile';
 import { matchShortcut, type ShortcutAction } from './shortcuts';
 import type { ClosedTabs, TabSnapshot } from './closed-tabs';
@@ -19,6 +20,8 @@ import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shar
 import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
 import { internalPageOf, internalUrl, type InternalPage } from '../shared/internal-pages';
 import type { ExtensionInstallPrompt } from '../shared/extensions';
+import { themeVars } from '../shared/themes';
+import { INTERNAL_IPC } from '../shared/internal-api';
 
 /** Guardado de la sesión: cada cambio lo marca; al cerrar la última ventana se guarda en el acto. */
 export interface SessionSaver {
@@ -152,6 +155,8 @@ export class BrowserWindowController {
   private groupEditorId: number | null = null;
   /** Menú de sugerencias de contraseñas (debajo del campo enfocado de la página). */
   readonly autofill: AutofillPopup;
+  /** Revisa cada minuto qué pestañas dormir. */
+  private readonly sleepTimer: NodeJS.Timeout;
   /** "¿Agregar la extensión?" esperando la respuesta del usuario. */
   private extensionPrompt: { prompt: ExtensionInstallPrompt; resolve: (allow: boolean) => void } | null = null;
 
@@ -195,7 +200,10 @@ export class BrowserWindowController {
       this.ctx.session.markDirty();
     });
     this.win.on('move', () => this.ctx.session.markDirty());
-    this.win.on('focus', () => { BrowserWindowController.lastFocused = this; });
+    this.win.on('focus', () => {
+      BrowserWindowController.lastFocused = this;
+      this.applyNativeTheme();
+    });
     // Windows va a cerrar la sesión o apagarse: se guardan todas las ventanas antes de que se cierren una por una
     this.win.on('query-session-end', () => this.ctx.session.finalSave());
     this.win.on('close', () => {
@@ -213,6 +221,7 @@ export class BrowserWindowController {
       this.closing = true;
       BrowserWindowController.all.delete(this);
       this.autofill.destroy();
+      clearInterval(this.sleepTimer);
       this.extensionPrompt?.resolve(false);
       this.extensionPrompt = null;
       for (const tab of this.tabs) {
@@ -227,6 +236,8 @@ export class BrowserWindowController {
     });
 
     BrowserWindowController.all.add(this);
+    this.sleepTimer = setInterval(() => this.sleepIdleTabs(), SLEEP_MINUTE_MS);
+    this.sleepTimer.unref();
     BrowserWindowController.lastFocused = this;
 
     if (opts.tabs?.length) {
@@ -400,6 +411,9 @@ export class BrowserWindowController {
     if (g?.collapsed) g.collapsed = false;
     const previous = this.activeTab;
     this.activeTab = tab;
+    const now = Date.now();
+    if (previous) previous.lastActive = now;
+    tab.lastActive = now;
     if (this.autofill.openFor && this.autofill.openFor !== tab) this.autofill.hide();
     if (previous && previous !== tab && this.tabs.includes(previous)) previous.view.setVisible(false);
     tab.ensureLoaded(); // pestaña restaurada: se carga recién ahora
@@ -593,6 +607,40 @@ export class BrowserWindowController {
     return new BrowserWindowController(this.ctx, { tabs: [tab] });
   }
 
+  // ---------------------------------------------------------------- pestañas dormidas
+
+  /**
+   * Duerme una pestaña: la reemplaza por una sin proceso que guarda su historial (y la posición en la página), como las
+   * pestañas restauradas que todavía no se cargaron. Al activarla se vuelve a cargar. Devuelve si la durmió.
+   */
+  sleepTab(tab: Tab): boolean {
+    if (tab === this.activeTab || !this.tabs.includes(tab) || !tab.canSleep) return false;
+    const index = this.tabs.indexOf(tab);
+    const saved = { ...savedFromSnapshot(tab.snapshot()), faviconKey: tab.state.faviconKey };
+    const sleeping = new Tab(this.ctx.profile, { pending: saved, kind: tab.kind, asleep: true, openerId: tab.openerId });
+    sleeping.groupId = tab.groupId;
+    sleeping.lastActive = tab.lastActive;
+    this.insertTab(sleeping, index, false, 'none', false);
+    this.removeTab(tab, { record: false, destroy: true });
+    return true;
+  }
+
+  /** Duerme las pestañas que no se usan hace más de lo configurado, y libera los service workers sin pestañas. */
+  private sleepIdleTabs(): void {
+    if (this.closing) return;
+    const minutes = this.ctx.profile.settings.sleepTabsAfter;
+    if (minutes) {
+      const limit = Date.now() - minutes * SLEEP_MINUTE_MS;
+      for (const tab of [...this.tabs]) if (tab !== this.activeTab && tab.lastActive < limit) this.sleepTab(tab);
+    }
+    // Una sola ventana por perfil hace la revisión (la primera), con las pestañas despiertas de todas
+    const profile = this.ctx.profile;
+    const windows = [...BrowserWindowController.all].filter((w) => w.ctx.profile === profile && !w.closing);
+    if (windows[0] !== this) return;
+    const live = windows.flatMap((w) => w.tabs.filter((t) => t.kind === 'web' && !t.isPending && !t.webContents.isDestroyed()).map((t) => t.webContents));
+    void stopOrphanServiceWorkers(profile.session, live, SLEEP_MINUTE_MS).catch(() => {});
+  }
+
   duplicate(tab: Tab): Tab {
     const copy = new Tab(this.ctx.profile, { kind: tab.kind, openerId: tab.id });
     copy.groupId = tab.groupId;
@@ -639,6 +687,17 @@ export class BrowserWindowController {
     tab?.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
   }
 
+  /**
+   * Modo claro u oscuro del tema para Chromium (menús, barras de desplazamiento, y prefers-color-scheme de los sitios,
+   * como en Chrome). Es uno solo para toda la app: manda la ventana enfocada.
+   */
+  applyNativeTheme(): void {
+    const t = this.ctx.profile.theme;
+    const source = t.colors ? t.mode : 'system';
+    if (nativeTheme.themeSource !== source) nativeTheme.themeSource = source;
+    this.win.setBackgroundColor(t.colors ? t.colors.toolbar : nativeTheme.shouldUseDarkColors ? '#2b2b2b' : '#f7f7f7');
+  }
+
   /** Grupos de la ventana (para chrome.tabGroups). */
   groupList(): TabGroupState[] {
     return [...this.groups.values()];
@@ -679,6 +738,7 @@ export class BrowserWindowController {
       groupEditor: this.groupEditorId,
       downloads: this.downloadsState(),
       bookmarks: this.bookmarksState(),
+      theme: themeVars(this.ctx.profile.theme),
       extensions: {
         // Sin extensiones en las ventanas privadas
         partition: this.ctx.profile.extensions ? `persist:profile-${this.ctx.profile.id}` : null,
@@ -1038,6 +1098,16 @@ export class BrowserWindowController {
     for (const w of this.all) w.queueState();
   }
 
+  /** Cambió la configuración de un perfil: el tema llega a la interfaz (estado), a Chromium y a las páginas internas. */
+  static settingsChanged(): void {
+    this.refreshAll();
+    this.current()?.applyNativeTheme();
+    for (const w of this.all) {
+      const vars = themeVars(w.ctx.profile.theme);
+      for (const t of w.tabs) if (t.kind === 'internal' && !t.webContents.isDestroyed()) t.webContents.send(INTERNAL_IPC.themeChanged, vars);
+    }
+  }
+
   onUiReady(): void {
     this.uiReady = true;
     this.sentFavicons.clear();
@@ -1252,6 +1322,7 @@ export class BrowserWindowController {
           hasTab: !!tab,
           tabCount: this.tabs.length,
           tabsToRight: index < 0 ? 0 : this.tabs.length - index - 1,
+          canSleep: !!tab && tab !== this.activeTab && tab.canSleep,
           canReopen: this.ctx.closedTabs.size > 0,
           groupId: tab?.groupId ?? null,
           groups: [...this.groups.values()].map((g) => ({ id: g.id, title: g.title, colorName: GROUP_COLORS[g.color].name })),
@@ -1265,6 +1336,7 @@ export class BrowserWindowController {
           reload: () => tab?.reload(false),
           duplicate: () => tab && this.duplicate(tab),
           moveToNewWindow: () => tab && this.moveToNewWindow(tab),
+          sleep: () => tab && this.sleepTab(tab),
           close: () => tab && this.closeTab(tab),
           closeOthers: () => tab && this.closeOtherTabs(tab),
           closeToRight: () => tab && this.closeTabsToRight(tab),

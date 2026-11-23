@@ -1,4 +1,5 @@
 import { app, type BaseWindow } from 'electron';
+import { disableChromiumFeatures } from './chromium-flags';
 
 /**
  * Modo de pruebas automáticas sin ventanas a la vista: lo activan las pruebas end-to-end con CALLISTO_TEST_INVISIBLE=1,
@@ -7,11 +8,17 @@ import { app, type BaseWindow } from 'electron';
  */
 export const invisibleForTests = !app.isPackaged && process.env.CALLISTO_TEST_INVISIBLE === '1';
 
+/**
+ * Duración de un "minuto" para dormir pestañas: en las pruebas automáticas (CALLISTO_TEST_MINUTE_MS, solo sin
+ * empaquetar) se acorta para no esperar minutos reales.
+ */
+export const SLEEP_MINUTE_MS = !app.isPackaged && Number(process.env.CALLISTO_TEST_MINUTE_MS) > 0 ? Number(process.env.CALLISTO_TEST_MINUTE_MS) : 60_000;
+
 /** Debe llamarse antes de `app.whenReady()`. */
 export function configureTestMode(): void {
   if (!invisibleForTests) return;
   // Que Chromium no deje de dibujar ni frene las ventanas por considerarlas tapadas o en segundo plano
-  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  disableChromiumFeatures('CalculateNativeWinOcclusion');
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
   app.commandLine.appendSwitch('disable-background-timer-throttling');
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');

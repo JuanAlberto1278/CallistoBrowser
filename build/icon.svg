@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Ícono de Callisto: la luna de la página de nueva pestaña sobre un cielo de noche. Fuente de build/icon.png
+       (scripts/render-icon.cjs). -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26406f"/>
+      <stop offset="1" stop-color="#0f1a33"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="38%" cy="32%" r="70%">
+      <stop offset="0" stop-color="#f3f6fb"/>
+      <stop offset="1" stop-color="#9fb0c6"/>
+    </radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#sky)"/>
+  <circle cx="128" cy="128" r="80" fill="url(#moon)"/>
+  <circle cx="102" cy="99" r="13" fill="rgba(70, 90, 120, 0.22)"/>
+  <circle cx="153" cy="145" r="18" fill="rgba(70, 90, 120, 0.22)"/>
+  <circle cx="110" cy="157" r="9" fill="rgba(70, 90, 120, 0.22)"/>
+  <circle cx="160" cy="94" r="6.5" fill="rgba(70, 90, 120, 0.22)"/>
+  <circle cx="196" cy="62" r="3" fill="#cfe0ff" opacity="0.8"/>
+  <circle cx="58" cy="196" r="2.4" fill="#cfe0ff" opacity="0.6"/>
+</svg>

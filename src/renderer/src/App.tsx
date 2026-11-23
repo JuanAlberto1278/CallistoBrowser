@@ -11,6 +11,7 @@ import { DownloadsButton, DownloadsFlyout } from './Downloads';
 import { NewTabPage } from './NewTabPage';
 import { PasswordOfferBubble } from './PasswordOffer';
 import { ExtensionActions, ExtensionInstallDialog } from './Extensions';
+import { applyThemeVars } from '../../shared/themes';
 import { BackIcon, CloseIcon, ForwardIcon, MaskIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
 
 /** Botón de perfil: inicial con el color del perfil, o "Privada" en una ventana privada. */
@@ -101,6 +102,12 @@ export function App() {
   const bookmarks = state?.bookmarks;
   const baseHeight = chromeHeight({ notice: !!notice, find: !!tab?.find, permission: !!tab?.permission, bookmarksBar: !!bookmarks?.barVisible });
   const downloads = state?.downloads;
+
+  // Colores del tema (con "Sistema", los de la hoja de estilos, que siguen el modo de Windows)
+  const theme = state?.theme;
+  useLayoutEffect(() => {
+    if (theme) applyThemeVars(document.documentElement, theme.ui, theme.ui ? theme.mode : null);
+  }, [theme]);
 
   // La interfaz se extiende sobre la página lo justo para mostrar los paneles abiertos
   const overlayBottom = Math.max(0, ...Object.values(overlays));

@@ -8,6 +8,7 @@
 // diálogo del sistema de llave de seguridad USB. Callisto anuncia solo lo que soporta. El inicio de sesión con passkey
 // que el usuario elige explícitamente sigue funcionando con el diálogo de Windows.
 import { contextBridge, ipcRenderer } from 'electron';
+import { PAGE_EDITED } from '../shared/page-signals';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, PW_IPC, isTextLike, isUsernameLike, pickPasswordIndex, pickUsernameIndex, type FieldInfo, type FieldRect } from '../shared/passwords';
 
 // Descargas autorizadas (docs/01-v0.1-resultados.md §1.2, "B-guard"): Callisto cancela toda descarga hasta que el
@@ -56,6 +57,20 @@ contextBridge.executeInMainWorld({
     }
   },
 });
+
+// ---------------------------------------------------------------- texto sin guardar (V1.0)
+// Una pestaña donde el usuario editó algo no se duerme sola (perdería lo escrito). Se avisa una vez por documento, en
+// cualquier frame; solo ediciones reales del usuario (isTrusted), no las que hace la página por su cuenta.
+let editedSent = false;
+document.addEventListener(
+  'input',
+  (e) => {
+    if (editedSent || !e.isTrusted) return;
+    editedSent = true;
+    ipcRenderer.send(PAGE_EDITED);
+  },
+  true,
+);
 
 // ---------------------------------------------------------------- contraseñas (V0.9)
 //

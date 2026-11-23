@@ -12,8 +12,20 @@ extraResources:
   - from: build-native/callisto-auth.exe
     to: callisto-auth.exe
 win:
+  # npm run package: instalador; npm run package:dir: carpeta sin instalar (para probar)
   target:
-    - target: dir
+    - target: nsis
+  icon: build/icon.png
+# Instalador por usuario (sin administrador, en %LOCALAPPDATA%\Programs\Callisto), sin firma de código (decisión V1.0:
+# Windows SmartScreen avisa la primera vez). build/installer.nsh lo registra como navegador.
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  include: build/installer.nsh
+  deleteAppDataOnUninstall: false
+  shortcutName: Callisto
+  artifactName: Callisto-Setup-${version}.${ext}
 # Endurecimiento del binario de Electron (verificado en V0.1)
 electronFuses:
   runAsNode: false

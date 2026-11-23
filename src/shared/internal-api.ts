@@ -8,6 +8,7 @@ import type { ProfileColor } from './profiles';
 import type { SearchEngineId, Settings } from './settings';
 import type { LoginSummary, VaultStatus } from './passwords';
 import type { ExtensionInfo } from './extensions';
+import type { UpdateStatus } from './updates';
 
 export interface HistoryEntry {
   id: number;
@@ -36,6 +37,16 @@ export interface SettingsSnapshot {
   /** Carpeta de descargas en uso y si es la predeterminada (Descargas de Windows). */
   downloadDir: string;
   downloadDirIsDefault: boolean;
+  /** Versión de Callisto y de sus componentes. */
+  about: { version: string; electron: string; chromium: string; node: string; v8: string };
+}
+
+/** Qué borrar en "Borrar datos de navegación". El período solo aplica al historial (Chromium borra el resto entero). */
+export interface ClearDataRequest {
+  period: ClearPeriod;
+  history: boolean;
+  siteData: boolean;
+  cache: boolean;
 }
 
 export const INTERNAL_IPC = {
@@ -54,6 +65,12 @@ export const INTERNAL_IPC = {
   downloadsClear: 'callisto-internal:downloads-clear',
   settingsChooseDownloadDir: 'callisto-internal:settings-choose-download-dir',
   settingsResetDownloadDir: 'callisto-internal:settings-reset-download-dir',
+  settingsClearData: 'callisto-internal:settings-clear-data',
+  settingsDefaultBrowser: 'callisto-internal:settings-default-browser',
+  settingsUpdateStatus: 'callisto-internal:settings-update-status',
+  settingsCheckUpdate: 'callisto-internal:settings-check-update',
+  settingsInstallUpdate: 'callisto-internal:settings-install-update',
+  settingsMakeDefault: 'callisto-internal:settings-make-default',
   bookmarksFolders: 'callisto-internal:bookmarks-folders',
   bookmarksChildren: 'callisto-internal:bookmarks-children',
   bookmarksSearch: 'callisto-internal:bookmarks-search',
@@ -80,6 +97,9 @@ export const INTERNAL_IPC = {
   extensionsOptions: 'callisto-internal:extensions-options',
   extensionsUpdate: 'callisto-internal:extensions-update',
   extensionsOpenStore: 'callisto-internal:extensions-open-store',
+  /** Colores del tema (cualquier página interna; las aplica su preload). */
+  themeGet: 'callisto-internal:theme-get',
+  themeChanged: 'callisto-internal:theme-changed',
 } as const;
 
 export interface ExtensionsSnapshot {
@@ -131,6 +151,17 @@ export interface CallistoInternalApi {
     /** Abre el selector de carpetas de Windows (la ruta la elige el usuario, no la página). */
     chooseDownloadDir(): Promise<SettingsSnapshot>;
     resetDownloadDir(): Promise<SettingsSnapshot>;
+    /** Borrar datos de navegación (historial, cookies y datos de sitios, caché). */
+    clearData(request: ClearDataRequest): Promise<void>;
+    /** ¿Callisto está registrado (instalado) y es el navegador predeterminado? */
+    defaultBrowser(): Promise<{ registered: boolean; isDefault: boolean }>;
+    /** Abre la página de Windows para elegir el navegador predeterminado. */
+    makeDefault(): void;
+    /** Actualizaciones de Callisto: `enabled` es false sin empaquetar (desarrollo). */
+    updateStatus(): Promise<{ enabled: boolean; status: UpdateStatus }>;
+    checkUpdate(): Promise<{ enabled: boolean; status: UpdateStatus }>;
+    /** Cierra Callisto e instala la versión descargada. */
+    installUpdate(): void;
   };
   downloads: {
     list(query?: string): Promise<DownloadEntry[]>;

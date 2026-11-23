@@ -1,6 +1,7 @@
 import { app, WebContentsView, type BaseWindow, type Session, type WebContents } from 'electron';
 import type { Tab } from './tab';
 import { AUTOFILL_IPC } from '../shared/autofill-ipc';
+import { themeVars } from '../shared/themes';
 import { PW_IPC, autofillBounds, hostOf, type AutofillPopupState, type FieldRect, type LoginSummary } from '../shared/passwords';
 
 export interface AutofillPopupOptions {
@@ -32,6 +33,8 @@ export class AutofillPopup {
   private selected = -1;
   private blurTimer: NodeJS.Timeout | null = null;
   private detach: (() => void) | null = null;
+  /** Si el menú no se vuelve a usar en un rato, se libera su proceso (ahorro de memoria). */
+  private releaseTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly win: BaseWindow, private readonly opts: AutofillPopupOptions) {}
 
@@ -70,6 +73,8 @@ export class AutofillPopup {
   /** Muestra las sugerencias de `origin` debajo del campo `field` de la pestaña. */
   show(tab: Tab, origin: string, field: FieldRect, items: LoginSummary[]): void {
     if (!items.length || this.win.isDestroyed()) return this.hide();
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    this.releaseTimer = null;
     const page = tab.view.getBounds();
     const { width, height } = this.win.getContentBounds();
     const bounds = autofillBounds(field, tab.webContents.getZoomFactor(), page, { width, height }, items.length);
@@ -105,7 +110,12 @@ export class AutofillPopup {
 
   sendState(): void {
     if (!this.contents || this.contents.isDestroyed()) return;
-    const state: AutofillPopupState = { items: this.items.map((l) => ({ id: l.id, username: l.username, host: hostOf(l.origin) })), selected: this.selected };
+    const theme = this.tab ? themeVars(this.tab.profile.theme) : null;
+    const state: AutofillPopupState = {
+      items: this.items.map((l) => ({ id: l.id, username: l.username, host: hostOf(l.origin) })),
+      selected: this.selected,
+      theme: { vars: theme?.ui ?? null, mode: theme?.mode ?? 'light' },
+    };
     this.contents.send(AUTOFILL_IPC.state, state);
   }
 
@@ -137,6 +147,20 @@ export class AutofillPopup {
     this.selected = -1;
     if (this.view && !this.win.isDestroyed()) this.view.setVisible(false);
     if (tab && !tab.webContents.isDestroyed()) tab.webContents.mainFrame.send(PW_IPC.popup, { open: false, count: 0 });
+    if (this.view && !this.releaseTimer) {
+      this.releaseTimer = setTimeout(() => this.release(), 60_000);
+      this.releaseTimer.unref();
+    }
+  }
+
+  /** Cierra la vista del menú (y su proceso); se vuelve a crear la próxima vez que haga falta. */
+  private release(): void {
+    this.releaseTimer = null;
+    if (this.tab || !this.view) return;
+    if (!this.win.isDestroyed()) this.win.contentView.removeChildView(this.view);
+    if (this.contents && !this.contents.isDestroyed()) this.contents.close();
+    this.view = null;
+    this.contents = null;
   }
 
   /** El usuario eligió una sugerencia (clic en el menú, o flechas + Enter en el campo): rellena el formulario. */
@@ -169,6 +193,8 @@ export class AutofillPopup {
 
   destroy(): void {
     this.hide();
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    this.releaseTimer = null;
     if (this.contents && !this.contents.isDestroyed()) this.contents.close();
     this.view = null;
     this.contents = null;

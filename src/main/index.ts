@@ -1,12 +1,18 @@
 import { app, Menu, session } from 'electron';
-import { readdirSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { configureUserData, prepareQuarantine, quarantineDir } from './paths';
 import { configureTestMode } from './test-mode';
+import { configureMemorySaving } from './chromium-flags';
 import { registerInternalScheme, serveInternalPages, serveInternalUi, UI_ORIGIN } from './internal-protocol';
 import { BrowserWindowController } from './window';
 import { registerIpc, registerProfilesIpc } from './ipc';
 import { registerPasswordIpc } from './passwords';
+import { updater } from './updater';
+import { ipcMain } from 'electron';
+import { Tab } from './tab';
+import { PAGE_EDITED } from '../shared/page-signals';
 import { ProfileManager } from './profiles';
 import { ProfileRegistry } from './profile-registry';
 import { buildUserAgent } from '../shared/user-agent';
@@ -14,20 +20,32 @@ import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 
 // ---------------------------------------------------------------- antes de que Electron esté listo
 configureUserData();
+configureMemorySaving();
 configureTestMode();
 registerInternalScheme();
 app.enableSandbox(); // todos los procesos de renderizado en sandbox, sin excepciones
 const userAgent = buildUserAgent(app.userAgentFallback, app.getVersion());
 app.userAgentFallback = userAgent;
 
-/** URL http(s) pasada por línea de comandos (p. ej. al abrir un enlace con Callisto). */
+/**
+ * Dirección pasada por línea de comandos: un enlace http(s) (Callisto como navegador predeterminado) o un archivo .htm o
+ * .html que exista (abrirlo con Callisto desde el Explorador).
+ */
 function urlFromArgv(argv: string[]): string | undefined {
   for (const arg of argv.slice(1)) {
-    if (!/^https?:\/\//i.test(arg)) continue;
-    try {
-      return new URL(arg).href;
-    } catch {
-      /* ignorar */
+    if (/^https?:\/\//i.test(arg)) {
+      try {
+        return new URL(arg).href;
+      } catch {
+        /* ignorar */
+      }
+    }
+    if (/^[a-zA-Z]:\\.+\.x?html?$/i.test(arg)) {
+      try {
+        if (existsSync(arg) && statSync(arg).isFile()) return pathToFileURL(arg).href;
+      } catch {
+        /* ignorar */
+      }
     }
   }
   return undefined;
@@ -67,6 +85,11 @@ if (!app.requestSingleInstanceLock()) {
     const trustedOrigin = devUrl ? new URL(devUrl).origin : UI_ORIGIN;
     registerIpc((url) => url.startsWith(trustedOrigin + '/'));
     registerPasswordIpc((url) => url.startsWith(trustedOrigin + '/'));
+    // Texto sin guardar en una pestaña (para no dormirla): de cualquier frame de una pestaña web
+    ipcMain.on(PAGE_EDITED, (e) => {
+      const tab = Tab.fromWebContents(e.sender);
+      if (tab?.kind === 'web') tab.markEdited();
+    });
 
     // Sesión de las páginas internas (historial, configuración): en memoria, sin permisos, separada de la web
     const internalSession = session.fromPartition('callisto-internal');
@@ -106,6 +129,9 @@ if (!app.requestSingleInstanceLock()) {
         /* se limpia también al arrancar */
       }
     });
+
+    // Actualizaciones de Callisto (solo en el ejecutable empaquetado)
+    updater.start();
 
     // Al arrancar: los perfiles que estaban abiertos al salir (o el último usado). La URL recibida, en el último.
     const startUrl = urlFromArgv(process.argv);

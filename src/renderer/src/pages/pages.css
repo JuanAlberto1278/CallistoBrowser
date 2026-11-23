@@ -306,3 +306,45 @@ a { color: var(--accent); }
 
 /* La tabla de compatibilidad: notas a la izquierda (las tablas de configuración alinean la última columna a la derecha) */
 [data-testid="extensions-tested"] td:last-child, [data-testid="extensions-tested"] th:last-child { text-align: left; }
+
+/* ---------------------------------------------------------------- temas */
+
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin: 12px 0 4px; }
+.theme-card { display: flex; flex-direction: column; gap: 6px; }
+.theme-pick { display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 2px solid transparent; border-radius: 10px; background: transparent; text-align: left; cursor: default; }
+.theme-pick:hover { background: var(--hover); }
+.theme-card.selected .theme-pick { border-color: var(--accent); }
+.theme-name { font-size: 13px; padding: 0 2px; }
+.theme-card-actions { display: flex; gap: 6px; padding: 0 6px; }
+.btn.small { height: 26px; padding: 0 10px; font-size: 12px; }
+.theme-subtitle { font-size: 14px; font-weight: 600; margin: 18px 0 4px; }
+
+.theme-preview { height: 64px; border-radius: 6px; padding: 8px 8px 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; border: 1px solid var(--border); }
+.theme-preview.large { height: 150px; padding: 12px 12px 0; flex: 1; min-width: 220px; align-self: flex-start; }
+.theme-preview.system { flex-direction: row; padding: 0; }
+.theme-preview.system .half { flex: 1; }
+.theme-preview.system .light { background: linear-gradient(#e6e6e6 40%, #f7f7f7 40%); }
+.theme-preview.system .dark { background: linear-gradient(#1f1f1f 40%, #2b2b2b 40%); }
+.tp-tab { width: 46%; height: 16px; border-radius: 6px 6px 0 0; display: flex; align-items: center; padding-left: 6px; }
+.tp-tab span { width: 8px; height: 8px; border-radius: 50%; }
+.tp-toolbar { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 6px; border-bottom: 1px solid; }
+.large .tp-tab { height: 26px; }
+.large .tp-toolbar { height: 60px; }
+.tp-address { flex: 1; height: 14px; border-radius: 7px; border: 1px solid; font-size: 11px; display: flex; align-items: center; padding-left: 8px; overflow: hidden; }
+.large .tp-address { height: 28px; border-radius: 14px; }
+.tp-accent { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+.theme-editor { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.theme-editor-form { flex: 1; min-width: 280px; }
+.theme-editor-form input:not([type="color"]) { height: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--field-border); background: var(--surface); }
+.color-field { display: inline-flex; align-items: center; gap: 8px; }
+.color-field code { font-size: 12px; color: var(--muted); }
+.color-field input[type="color"] { width: 40px; height: 28px; padding: 2px; border: 1px solid var(--field-border); border-radius: 6px; background: var(--surface); }
+.theme-warning { color: var(--danger); font-size: 12px; margin: 8px 0 0; }
+.theme-editor-buttons { justify-content: flex-start; gap: 8px; }
+
+/* ---------------------------------------------------------------- borrar datos */
+
+.clear-data { display: flex; flex-direction: column; gap: 4px; }
+.check { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; }
+.check input { margin-top: 3px; }

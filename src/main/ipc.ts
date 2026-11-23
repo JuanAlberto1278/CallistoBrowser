@@ -1,5 +1,7 @@
-import { clipboard, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { app, clipboard, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
 import { verifyUser } from './os-auth';
+import { defaultBrowserStatus, openDefaultAppsSettings } from './default-browser';
+import { updater } from './updater';
 import { VaultError } from './password-vault';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, hostOf as loginHost, isLoginOrigin } from '../shared/passwords';
 import { BrowserWindowController } from './window';
@@ -20,6 +22,7 @@ import { SEARCH_ENGINES, type SearchEngineId } from '../shared/settings';
 import { zoomPercent } from '../shared/zoom';
 import { answerPasswordOffer } from './passwords';
 import { WEBSTORE_ORIGIN, isExtensionId } from '../shared/extensions';
+import { themeVars } from '../shared/themes';
 
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
@@ -236,6 +239,7 @@ function settingsSnapshot(profile: BrowserWindowController['ctx']['profile']): S
     zoom: profile.zoom.all().map((z) => ({ host: z.host, percent: zoomPercent(z.factor) })),
     downloadDir: profile.downloadDir,
     downloadDirIsDefault: profile.settings.downloadDir === null,
+    about: { version: app.getVersion(), electron: process.versions.electron, chromium: process.versions.chrome, node: process.versions.node, v8: process.versions.v8 },
   };
 }
 
@@ -298,6 +302,49 @@ function registerInternalIpc(): void {
       const now = Date.now();
       ctx.profile.history.deleteRange(now - CLEAR_PERIODS[period as keyof typeof CLEAR_PERIODS], now + 1);
     }
+  });
+
+  ipcMain.handle(INTERNAL_IPC.settingsDefaultBrowser, (e) => {
+    fromInternal(e, 'settings') ?? denied();
+    return defaultBrowserStatus();
+  });
+  ipcMain.handle(INTERNAL_IPC.settingsUpdateStatus, (e) => {
+    fromInternal(e, 'settings') ?? denied();
+    return { enabled: updater.enabled, status: updater.status };
+  });
+  ipcMain.handle(INTERNAL_IPC.settingsCheckUpdate, async (e) => {
+    fromInternal(e, 'settings') ?? denied();
+    await updater.check();
+    return { enabled: updater.enabled, status: updater.status };
+  });
+  ipcMain.on(INTERNAL_IPC.settingsInstallUpdate, (e) => {
+    if (fromInternal(e, 'settings')) updater.installAndRestart();
+  });
+  ipcMain.on(INTERNAL_IPC.settingsMakeDefault, (e) => {
+    if (!fromInternal(e, 'settings')) return;
+    void defaultBrowserStatus().then((s) => openDefaultAppsSettings(s.registered));
+  });
+  // Borrar datos de navegación (desde la configuración). En una ventana privada, los del perfil de origen (como Chrome).
+  ipcMain.handle(INTERNAL_IPC.settingsClearData, async (e, req: unknown) => {
+    const ctx = fromInternal(e, 'settings') ?? denied();
+    if (!isObj(req)) return;
+    const profile = ctx.profile.parent ?? ctx.profile;
+    const period = req.period;
+    if (req.history === true) {
+      if (period === 'all') profile.history.deleteAll();
+      else if (typeof period === 'string' && period in CLEAR_PERIODS) {
+        const now = Date.now();
+        profile.history.deleteRange(now - CLEAR_PERIODS[period as keyof typeof CLEAR_PERIODS], now + 1);
+      }
+    }
+    // Los datos de las extensiones (su configuración) no se tocan, como en Chrome
+    const excludeOrigins = (profile.extensions?.registry.all() ?? []).map((r) => `chrome-extension://${r.id}`);
+    const exclude = excludeOrigins.length ? { excludeOrigins } : {};
+    if (req.siteData === true) {
+      await profile.session.clearData({ dataTypes: ['cookies', 'localStorage', 'indexedDB', 'serviceWorkers', 'fileSystems', 'webSQL', 'backgroundFetch'], ...exclude });
+      await profile.session.clearAuthCache();
+    }
+    if (req.cache === true) await profile.session.clearData({ dataTypes: ['cache'], ...exclude });
   });
 
   ipcMain.on(INTERNAL_IPC.historyOpen, (e, url: unknown, where: unknown) => {
@@ -428,6 +475,12 @@ function registerInternalIpc(): void {
 
   registerPasswordsPageIpc();
   registerExtensionsPageIpc();
+  // Tema de las páginas internas: cualquiera de ellas (desde su frame principal)
+  ipcMain.handle(INTERNAL_IPC.themeGet, (e) => {
+    const tab = Tab.fromWebContents(e.sender);
+    const win = tab && tab.kind === 'internal' && e.senderFrame === e.sender.mainFrame ? BrowserWindowController.ofTab(tab) : undefined;
+    return themeVars((win?.ctx.profile ?? denied()).theme);
+  });
 }
 
 // ---------------------------------------------------------------- callisto://extensions

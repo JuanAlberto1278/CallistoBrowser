@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import type { AutofillPopupState } from '../../../shared/passwords';
 import type { CallistoAutofillApi } from '../../../preload/autofill';
 import { KeyIcon } from '../icons';
+import { applyThemeVars } from '../../../shared/themes';
 import '../styles.css';
 import './autofill.css';
 
@@ -15,13 +16,14 @@ declare global {
 /** Menú de sugerencias de contraseñas: usuarios guardados para el sitio. Elegir uno rellena el formulario. */
 function AutofillMenu() {
   const api = window.callistoAutofill;
-  const [state, setState] = useState<AutofillPopupState>({ items: [], selected: -1 });
+  const [state, setState] = useState<AutofillPopupState>({ items: [], selected: -1, theme: { vars: null, mode: 'light' } });
   const [hover, setHover] = useState(-1);
   const list = useRef<HTMLUListElement>(null);
 
   useEffect(() => api.onState((s) => {
     setState(s);
     setHover(-1);
+    applyThemeVars(document.documentElement, s.theme.vars, s.theme.vars ? s.theme.mode : null);
   }), [api]);
 
   useEffect(() => {

@@ -14,6 +14,7 @@ import { DownloadStore } from './download-store';
 import { DownloadManager } from './downloads';
 import { BookmarkStore } from './bookmark-store';
 import type { ProfileColor } from '../shared/profiles';
+import { findTheme, type Theme } from '../shared/themes';
 
 /** Clave de la bóveda de contraseñas protegida con DPAPI (la cuenta de Windows), vía safeStorage. */
 const dpapiKeyWrapper: KeyWrapper = {
@@ -188,6 +189,12 @@ export class Profile extends EventEmitter<ProfileEvents> {
   /** La configuración de un perfil privado es la de su perfil de origen. */
   get settings(): Settings {
     return this.parent ? this.parent.settings : this.settingsValue;
+  }
+
+  /** Tema elegido (el de una ventana privada es el de su perfil de origen). */
+  get theme(): Theme {
+    const s = this.settings;
+    return findTheme(s.theme, s.customThemes);
   }
 
   get searchTemplate(): string {

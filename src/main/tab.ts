@@ -31,6 +31,8 @@ export interface TabOptions {
   pending?: SavedTab;
   /** Pestaña nueva abierta por el usuario: mientras esté vacía muestra la página de nueva pestaña. */
   newTabPage?: boolean;
+  /** Pestaña dormida (para ahorrar memoria): `pending` es lo que tenía; se vuelve a cargar al activarla. */
+  asleep?: boolean;
 }
 
 interface FailedLoad {
@@ -104,6 +106,13 @@ export class Tab extends EventEmitter<TabEvents> {
     // electron-chrome-extensions para volver a leer los datos de la pestaña y emitir tabs.onUpdated
     if (!this.webContents.isDestroyed()) (this.webContents as unknown as NodeJS.EventEmitter).emit('tab-updated');
   }
+  /** Última vez que fue la pestaña activa (para dormir las que no se usan). */
+  lastActive = Date.now();
+  /** El usuario escribió en la página desde la última navegación (podría tener texto sin guardar: no se duerme sola). */
+  private typedSinceNavigation = false;
+  /** Dormida: sin proceso; se vuelve a cargar al activarla. */
+  private asleepValue: boolean;
+
   /** Contraseñas (los administra passwords.ts): lo enviado, el usuario de un primer paso y la oferta de guardar. */
   pendingLogin: PendingLogin | null = null;
   usernameCandidate: { origin: string; username: string; at: number } | null = null;
@@ -134,6 +143,7 @@ export class Tab extends EventEmitter<TabEvents> {
     this.kind = opts.kind ?? (opts.pending && internalPageOf(opts.pending.url) ? 'internal' : 'web');
     this.faviconKey = opts.pending?.faviconKey ?? null;
     this.newTabPage = opts.newTabPage ?? (!!opts.pending && (opts.pending.url === 'about:blank' || opts.pending.url === ''));
+    this.asleepValue = !!opts.asleep && !!opts.pending;
     const adopt = opts.adopt;
     const secure = { sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, safeDialogs: true } as const;
     this.view = adopt
@@ -197,6 +207,7 @@ export class Tab extends EventEmitter<TabEvents> {
       const responded = url.startsWith('file:') ? !this.failed : httpResponseCode > 0;
       if (responded && transition !== 'reload' && transition !== 'history') this.record(url, transition === 'typed');
       else this.lastRecordedUrl = url;
+      this.typedSinceNavigation = false;
       changed();
       this.emit('navigated');
     });
@@ -358,6 +369,7 @@ export class Tab extends EventEmitter<TabEvents> {
       find: this.findState,
       notice: this.noticeState,
       newTabPage: this.showsNewTabPage,
+      asleep: this.asleepValue,
       groupId: this.groupId,
       permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
       passwordOffer: this.passwordOfferValue?.offer ?? null,
@@ -384,7 +396,30 @@ export class Tab extends EventEmitter<TabEvents> {
     const p = this.pending;
     if (!p) return;
     this.pending = null;
+    this.asleepValue = false;
     this.restore(p);
+  }
+
+  /** El usuario editó algo en la página (aviso del preload): no se duerme sola hasta que navegue. */
+  markEdited(): void {
+    this.typedSinceNavigation = true;
+  }
+
+  get asleep(): boolean {
+    return this.asleepValue;
+  }
+
+  /**
+   * ¿Se puede dormir sin que el usuario pierda nada? No si está cargando, suena, tiene un pedido de permiso o una
+   * oferta de contraseña pendiente, la búsqueda abierta, las herramientas de desarrollo, o si el usuario escribió algo.
+   */
+  get canSleep(): boolean {
+    if (this.pending || this.closing) return false;
+    const wc = this.webContents;
+    if (wc.isDestroyed() || wc.isLoading() || wc.isCurrentlyAudible() || wc.isDevToolsOpened()) return false;
+    if (this.typedSinceNavigation || this.permissionQueue.length || this.findState || this.passwordOfferValue) return false;
+    const url = wc.getURL();
+    return !!url && url !== 'about:blank';
   }
 
   // ---------------------------------------------------------------- navegación

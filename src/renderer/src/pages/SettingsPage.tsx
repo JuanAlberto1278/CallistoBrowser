@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { ThemesSection } from './Themes';
+import { ClearDataPanel } from './ClearData';
+import { DefaultBrowserSection } from './DefaultBrowser';
+import { UpdatesRow } from './Updates';
 import type { SettingsSnapshot } from '../../../shared/internal-api';
 import type { SearchEngineId, Settings } from '../../../shared/settings';
 
@@ -65,6 +69,28 @@ export function SettingsPage() {
           />
           Abrir una pestaña nueva
         </label>
+      </section>
+
+      <ThemesSection settings={settings} update={update} />
+
+      <section className="card" aria-labelledby="s-performance">
+        <h2 id="s-performance">Rendimiento</h2>
+        <div className="row">
+          <label htmlFor="sleep">Dormir las pestañas que no usás después de</label>
+          <select id="sleep" data-testid="settings-sleep" value={settings.sleepTabsAfter} onChange={(e) => update({ sleepTabsAfter: Number(e.target.value) as Settings['sleepTabsAfter'] })}>
+            <option value={5}>5 minutos</option>
+            <option value={15}>15 minutos</option>
+            <option value={30}>30 minutos</option>
+            <option value={60}>1 hora</option>
+            <option value={120}>2 horas</option>
+            <option value={0}>Nunca</option>
+          </select>
+        </div>
+        <p className="muted">
+          Una pestaña dormida no usa memoria: queda en la barra (atenuada) y se vuelve a cargar al tocarla, en el mismo lugar de la página. Nunca se
+          duermen la pestaña que estás viendo, las que reproducen sonido, cargan o tienen texto que escribiste. También podés dormir una pestaña desde su
+          menú (clic derecho).
+        </p>
       </section>
 
       <section className="card" aria-labelledby="s-appearance">
@@ -176,13 +202,47 @@ export function SettingsPage() {
       </section>
 
       <section className="card" aria-labelledby="s-history">
-        <h2 id="s-history">Historial</h2>
+        <h2 id="s-history">Privacidad y datos</h2>
         <div className="row">
           <span className="muted">Las páginas visitadas se guardan 90 días.</span>
           <button className="btn" onClick={() => api.openPage('history')}>
-            Ver y borrar el historial
+            Ver el historial
           </button>
         </div>
+        <h3 className="theme-subtitle">Borrar datos de navegación</h3>
+        <ClearDataPanel />
+      </section>
+
+      <section className="card" aria-labelledby="s-more">
+        <h2 id="s-more">Perfiles y extensiones</h2>
+        <div className="row">
+          <span className="muted">Cada perfil tiene su historial, favoritos, contraseñas, extensiones y sesión.</span>
+          <button className="btn" data-testid="settings-profiles" onClick={() => api.openPage('profiles')}>
+            Administrar perfiles
+          </button>
+        </div>
+        <div className="row">
+          <span className="muted">Extensiones instaladas desde la Chrome Web Store.</span>
+          <button className="btn" data-testid="settings-extensions" onClick={() => api.openPage('extensions')}>
+            Administrar extensiones
+          </button>
+        </div>
+      </section>
+
+      <DefaultBrowserSection />
+
+      <section className="card" aria-labelledby="s-about">
+        <h2 id="s-about">Acerca de Callisto</h2>
+        <div className="row">
+          <span>
+            <strong data-testid="settings-version">Callisto {snap.about.version}</strong>
+            <br />
+            <span className="muted small">
+              Chromium {snap.about.chromium} · Electron {snap.about.electron} · Node.js {snap.about.node}
+            </span>
+          </span>
+        </div>
+        <UpdatesRow />
       </section>
     </div>
   );

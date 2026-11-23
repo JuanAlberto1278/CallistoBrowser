@@ -180,9 +180,10 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                   data-tab-id={t.id}
                   data-active={active}
                   data-group-id={t.groupId ?? ''}
-                  className={['tab', active ? 'active' : '', group ? 'grouped' : '', dropAt === i ? 'drop-before' : '', dropAt === i + 1 && i === tabs.length - 1 ? 'drop-after' : ''].join(' ')}
+                  data-asleep={t.asleep}
+                  className={['tab', active ? 'active' : '', group ? 'grouped' : '', t.asleep ? 'asleep' : '', dropAt === i ? 'drop-before' : '', dropAt === i + 1 && i === tabs.length - 1 ? 'drop-after' : ''].join(' ')}
                   style={color ? { ['--group' as string]: color } : undefined}
-                  title={t.url && t.url !== 'about:blank' ? `${title}\n${displayUrl(t.url)}` : title}
+                  title={(t.url && t.url !== 'about:blank' ? `${title}\n${displayUrl(t.url)}` : title) + (t.asleep ? '\nDormida para ahorrar memoria' : '')}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(DRAG_TAB, String(t.id));

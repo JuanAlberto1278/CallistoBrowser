@@ -8,6 +8,7 @@ import type { WindowProfile } from './profiles';
 import type { GroupAction, GroupColor, TabGroupState } from './tab-groups';
 import type { PasswordOffer } from './passwords';
 import type { ExtensionInstallPrompt } from './extensions';
+import type { ThemeVars } from './themes';
 
 export interface Notice {
   id: number;
@@ -48,6 +49,8 @@ export interface TabState {
   groupId: number | null;
   /** Oferta de guardar (o actualizar) la contraseña recién enviada. */
   passwordOffer: PasswordOffer | null;
+  /** Dormida para ahorrar memoria (se vuelve a cargar al activarla). */
+  asleep: boolean;
 }
 
 export interface DownloadsUiState {
@@ -134,6 +137,8 @@ export interface WindowState {
   downloads: DownloadsUiState;
   bookmarks: BookmarksUiState;
   extensions: ExtensionsUiState;
+  /** Colores del tema elegido (null en ui = "Sistema"). */
+  theme: ThemeVars;
 }
 
 export interface ExtensionsUiState {

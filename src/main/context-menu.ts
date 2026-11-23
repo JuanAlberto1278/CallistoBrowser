@@ -136,6 +136,8 @@ export interface TabMenuInfo {
   tabCount: number;
   tabsToRight: number;
   canReopen: boolean;
+  /** La pestaña se puede dormir (no es la activa, no está cargando, no suena…). */
+  canSleep?: boolean;
 }
 
 export interface TabMenuActions {
@@ -147,6 +149,7 @@ export interface TabMenuActions {
   reload(): void;
   duplicate(): void;
   moveToNewWindow(): void;
+  sleep?(): void;
   close(): void;
   closeOthers(): void;
   closeToRight(): void;
@@ -174,6 +177,7 @@ export function tabMenuTemplate(info: TabMenuInfo, a: TabMenuActions): Item[] {
     { label: 'Volver a cargar', accelerator: 'F5', registerAccelerator: false, click: () => a.reload() },
     { label: 'Duplicar', accelerator: 'Ctrl+Shift+K', registerAccelerator: false, click: () => a.duplicate() },
     { label: 'Mover a una ventana nueva', enabled: info.tabCount > 1, click: () => a.moveToNewWindow() },
+    { label: 'Dormir la pestaña (liberar memoria)', enabled: !!info.canSleep, click: () => a.sleep?.() },
     SEP,
     { label: 'Cerrar pestaña', accelerator: 'Ctrl+W', registerAccelerator: false, click: () => a.close() },
     { label: 'Cerrar las demás pestañas', enabled: info.tabCount > 1, click: () => a.closeOthers() },

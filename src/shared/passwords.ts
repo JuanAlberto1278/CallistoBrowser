@@ -57,6 +57,8 @@ export interface AutofillItem {
 export interface AutofillPopupState {
   items: AutofillItem[];
   selected: number;
+  /** Colores de la interfaz según el tema (null = los de la hoja de estilos). */
+  theme: { vars: Record<string, string> | null; mode: 'light' | 'dark' };
 }
 
 /** Canales entre el preload de las páginas web y el proceso principal. El sitio lo decide el principal, no la página. */

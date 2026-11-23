@@ -2,6 +2,7 @@
 // Solo corre en pestañas internas (sesión propia, sin acceso a la sesión web). No expone ipcRenderer ni Node.
 import { contextBridge, ipcRenderer } from 'electron';
 import { INTERNAL_IPC, type CallistoInternalApi } from '../shared/internal-api';
+import { applyThemeVars, type ThemeVars } from '../shared/themes';
 
 const api: CallistoInternalApi = {
   history: {
@@ -17,6 +18,12 @@ const api: CallistoInternalApi = {
     removeZoom: (host) => ipcRenderer.invoke(INTERNAL_IPC.settingsRemoveZoom, String(host)),
     chooseDownloadDir: () => ipcRenderer.invoke(INTERNAL_IPC.settingsChooseDownloadDir),
     resetDownloadDir: () => ipcRenderer.invoke(INTERNAL_IPC.settingsResetDownloadDir),
+    defaultBrowser: () => ipcRenderer.invoke(INTERNAL_IPC.settingsDefaultBrowser),
+    updateStatus: () => ipcRenderer.invoke(INTERNAL_IPC.settingsUpdateStatus),
+    checkUpdate: () => ipcRenderer.invoke(INTERNAL_IPC.settingsCheckUpdate),
+    installUpdate: () => ipcRenderer.send(INTERNAL_IPC.settingsInstallUpdate),
+    makeDefault: () => ipcRenderer.send(INTERNAL_IPC.settingsMakeDefault),
+    clearData: (r) => ipcRenderer.invoke(INTERNAL_IPC.settingsClearData, { period: String(r.period), history: r.history === true, siteData: r.siteData === true, cache: r.cache === true }),
   },
   downloads: {
     list: (query) => ipcRenderer.invoke(INTERNAL_IPC.downloadsList, query === undefined ? undefined : String(query)),
@@ -66,3 +73,11 @@ const api: CallistoInternalApi = {
 };
 
 contextBridge.exposeInMainWorld('callistoInternal', api);
+
+// Tema: lo aplica el preload (el DOM es el mismo que ve la página), así ninguna página tiene que ocuparse
+const applyTheme = (t: ThemeVars) => applyThemeVars(document.documentElement, t.pages, t.pages ? t.mode : null);
+ipcRenderer.on(INTERNAL_IPC.themeChanged, (_e, t: ThemeVars) => applyTheme(t));
+void ipcRenderer.invoke(INTERNAL_IPC.themeGet).then((t: ThemeVars) => {
+  if (document.documentElement) applyTheme(t);
+  else document.addEventListener('DOMContentLoaded', () => applyTheme(t), { once: true });
+});

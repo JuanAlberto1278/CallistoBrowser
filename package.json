@@ -1,7 +1,7 @@
 {
   "name": "callisto",
   "productName": "Callisto",
-  "version": "0.10.0",
+  "version": "1.0.0",
   "description": "Callisto — navegador web de escritorio para Windows",
   "private": true,
   "main": "out/main/index.js",
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
+    "package": "npm run build && electron-builder --win nsis",
     "package:dir": "npm run build && electron-builder --dir",
     "check": "npm run typecheck && npm run test && npm run test:e2e"
   },

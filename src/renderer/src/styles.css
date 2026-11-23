@@ -792,3 +792,6 @@ browser-action-list.extension-actions::part(badge) { font: 600 9px/1 "Segoe UI",
 .extension-prompt-list li { margin: 2px 0; }
 .extension-prompt-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .extension-prompt .prompt-buttons { justify-content: flex-end; }
+
+/* Pestaña dormida (sin proceso, para ahorrar memoria): atenuada, como en Edge */
+.tab.asleep:not(.active) .tab-icon, .tab.asleep:not(.active) .tab-title { opacity: 0.55; }

@@ -2,7 +2,7 @@
 
 Navegador web de escritorio para Windows, basado en Electron (Chromium).
 
-**Versión actual: V0.10, extensiones.** Instalar desde la Chrome Web Store con confirmación y firmas verificadas, botones y popups en la barra y página de administración con la compatibilidad medida, sobre V0.9 (contraseñas), V0.8 (grupos de pestañas), V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
+**Versión actual: V1.0.** Instalador por usuario, navegador predeterminado, actualizaciones desde GitHub Releases, pestañas dormidas y liberación de memoria (216 MB con 5 páginas, 4 dormidas), temas y configuración completa, sobre V0.10 (extensiones), V0.9 (contraseñas), V0.8 (grupos de pestañas), V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
 
 ## Comandos
 
@@ -10,6 +10,7 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 |---|---|
 | `npm run dev` | Modo desarrollo (perfil `%APPDATA%\Callisto-Dev`) |
 | `npm run check` | Tipos + pruebas unitarias + end-to-end |
+| `npm run package` | Instalador en `dist\Callisto-Setup-<versión>.exe` (sin firma: SmartScreen avisa la primera vez) |
 | `npm run package:dir` | Ejecutable en `dist\win-unpacked\Callisto.exe` |
 
 ## Documentación
@@ -25,5 +26,6 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 - [08 — V0.8: grupos de pestañas](docs/08-v0.8-grupos-de-pestanas.md)
 - [09 — V0.9: contraseñas (incluye el documento de seguridad)](docs/09-v0.9-contrasenas.md)
 - [10 — V0.10: extensiones](docs/10-v0.10-extensiones.md)
+- [11 — V1.0: distribución, liviandad y temas](docs/11-v1.0-distribucion.md)
 
 Las pruebas de concepto de V0.1 están en [`spikes/`](spikes/README.md), un proyecto separado.

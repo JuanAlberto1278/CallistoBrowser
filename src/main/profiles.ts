@@ -140,7 +140,7 @@ export class ProfileManager implements ProfilesApi {
       if (tab) tab.requestPermission(request);
       else request.respond(false, false);
     });
-    profile.on('settings-changed', () => BrowserWindowController.refreshAll());
+    profile.on('settings-changed', () => BrowserWindowController.settingsChanged());
     profile.on('bookmarks-changed', () => BrowserWindowController.refreshAll());
   }
 
