@@ -1,5 +1,5 @@
 import { basename, dirname, join } from 'node:path';
-import { app, BaseWindow, clipboard, dialog, Menu, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
+import { app, BaseWindow, clipboard, dialog, Menu, MenuItem, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
 import { Tab, type TabKind } from './tab';
 import { showWindow } from './test-mode';
 import { AutofillPopup } from './autofill-popup';
@@ -18,6 +18,7 @@ import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
 import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
 import { internalPageOf, internalUrl, type InternalPage } from '../shared/internal-pages';
+import type { ExtensionInstallPrompt } from '../shared/extensions';
 
 /** Guardado de la sesión: cada cambio lo marca; al cerrar la última ventana se guarda en el acto. */
 export interface SessionSaver {
@@ -72,6 +73,7 @@ interface Attached {
 
 let nextWindowId = 1;
 let nextGroupId = 1;
+let nextExtensionPromptId = 1;
 
 const DEFAULT_SIZE = { width: 1280, height: 860 };
 
@@ -150,6 +152,8 @@ export class BrowserWindowController {
   private groupEditorId: number | null = null;
   /** Menú de sugerencias de contraseñas (debajo del campo enfocado de la página). */
   readonly autofill: AutofillPopup;
+  /** "¿Agregar la extensión?" esperando la respuesta del usuario. */
+  private extensionPrompt: { prompt: ExtensionInstallPrompt; resolve: (allow: boolean) => void } | null = null;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
     this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
@@ -209,6 +213,8 @@ export class BrowserWindowController {
       this.closing = true;
       BrowserWindowController.all.delete(this);
       this.autofill.destroy();
+      this.extensionPrompt?.resolve(false);
+      this.extensionPrompt = null;
       for (const tab of this.tabs) {
         this.attached.get(tab)?.dispose();
         tab.destroy();
@@ -363,6 +369,9 @@ export class BrowserWindowController {
     tab.on('closed-by-page', onClosedByPage);
     tab.on('zoom-changed', onZoom);
     tab.on('favicon', onFavicon);
+    // Las extensiones ven las pestañas web del perfil (chrome.tabs), con esta ventana
+    const extensions = tab.kind === 'web' ? this.ctx.profile.extensions : null;
+    extensions?.tabAdded(tab.webContents, this.win);
     this.attached.set(tab, {
       dispose: () => {
         tab.off('state-changed', onState);
@@ -372,6 +381,7 @@ export class BrowserWindowController {
         tab.off('zoom-changed', onZoom);
         tab.off('favicon', onFavicon);
         tab.openHandler = null;
+        extensions?.tabRemoved(tab.webContents);
       },
     });
   }
@@ -394,6 +404,7 @@ export class BrowserWindowController {
     if (previous && previous !== tab && this.tabs.includes(previous)) previous.view.setVisible(false);
     tab.ensureLoaded(); // pestaña restaurada: se carga recién ahora
     tab.view.setVisible(true);
+    if (tab.kind === 'web') this.ctx.profile.extensions?.tabSelected(tab.webContents);
     this.layout();
     this.queueState();
     if (opts.focus !== 'none') this.focusContent(opts.focus ?? 'auto');
@@ -474,14 +485,15 @@ export class BrowserWindowController {
     return last ? this.tabs.indexOf(last) + 1 : this.tabs.length;
   }
 
-  createGroup(tab: Tab): number {
+  /** `fromExtension`: lo pide una extensión (chrome.tabs.group): queda en su lugar y sin abrir el panel. */
+  createGroup(tab: Tab, fromExtension = false): number {
     const id = nextGroupId++;
     this.groups.set(id, { id, title: '', color: nextGroupColor([...this.groups.values()].map((g) => g.color)), collapsed: false });
     tab.groupId = id;
     // El grupo nuevo empieza a la izquierda del todo, antes de las demás pestañas y grupos
-    this.tabs = moveItem(this.tabs, this.tabs.indexOf(tab), 0);
+    if (!fromExtension) this.tabs = moveItem(this.tabs, this.tabs.indexOf(tab), 0);
     this.tidyGroups();
-    this.groupEditorId = id; // como en Chrome: se abre el panel para ponerle nombre
+    if (!fromExtension) this.groupEditorId = id; // como en Chrome: se abre el panel para ponerle nombre
     this.queueState();
     return id;
   }
@@ -627,6 +639,16 @@ export class BrowserWindowController {
     tab?.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
   }
 
+  /** Grupos de la ventana (para chrome.tabGroups). */
+  groupList(): TabGroupState[] {
+    return [...this.groups.values()];
+  }
+
+  /** Posición de la primera pestaña del grupo (-1 si no existe). */
+  groupIndex(id: number): number {
+    return this.tabs.findIndex((t) => t.groupId === id);
+  }
+
   setOverlayHeight(px: number): void {
     const h = Math.max(0, Math.min(Math.round(px), MAX_OVERLAY_HEIGHT));
     if (h === this.overlayHeight) return;
@@ -657,6 +679,11 @@ export class BrowserWindowController {
       groupEditor: this.groupEditorId,
       downloads: this.downloadsState(),
       bookmarks: this.bookmarksState(),
+      extensions: {
+        // Sin extensiones en las ventanas privadas
+        partition: this.ctx.profile.extensions ? `persist:profile-${this.ctx.profile.id}` : null,
+        prompt: this.extensionPrompt?.prompt ?? null,
+      },
     };
     // La ventana se está cerrando (su última pestaña ya salió, p. ej. un popup que se cerró solo): no hay nada que mostrar
     const active = state.tabs.find((t) => t.id === state.activeTabId);
@@ -669,6 +696,8 @@ export class BrowserWindowController {
     } catch {
       return; // la ventana se está destruyendo (al salir): no hay a quién mostrarle nada
     }
+    // Las extensiones con chrome.tabGroups se enteran de los cambios de grupos
+    this.ctx.profile.extensions?.emit('groups-maybe-changed');
     if (!this.uiReady || this.uiContents.isDestroyed()) return;
 
     // Favicons: se envían una sola vez por ventana; el estado solo lleva la clave.
@@ -1115,9 +1144,50 @@ export class BrowserWindowController {
 
   // ---------------------------------------------------------------- menús (nativos)
 
-  private popup(template: MenuItemConstructorOptions[]): void {
-    if (template.length === 0) return;
-    Menu.buildFromTemplate(template).popup({ window: this.win });
+  private popup(template: MenuItemConstructorOptions[], extra: MenuItem[] = []): void {
+    if (template.length === 0 && extra.length === 0) return;
+    const menu = Menu.buildFromTemplate(template);
+    if (extra.length) {
+      if (template.length) menu.append(new MenuItem({ type: 'separator' }));
+      for (const item of extra) menu.append(item);
+    }
+    menu.popup({ window: this.win });
+  }
+
+  // ---------------------------------------------------------------- extensiones
+
+  /** "¿Agregar la extensión?" en esta ventana. Resuelve con la respuesta (no, si la ventana se cierra). */
+  askExtensionInstall(prompt: Omit<ExtensionInstallPrompt, 'id'>): Promise<boolean> {
+    if (this.extensionPrompt || this.closing) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      this.extensionPrompt = { prompt: { ...prompt, id: nextExtensionPromptId++ }, resolve };
+      this.focus();
+      this.queueState();
+    });
+  }
+
+  answerExtensionInstall(id: number, allow: boolean): void {
+    const p = this.extensionPrompt;
+    if (!p || p.prompt.id !== id) return;
+    this.extensionPrompt = null;
+    p.resolve(allow);
+    this.queueState();
+  }
+
+  /** Menú del botón de una extensión en la barra. */
+  showExtensionMenu(extensionId: string): void {
+    const ext = this.ctx.profile.extensions;
+    const info = ext?.list().find((e) => e.id === extensionId);
+    if (!ext || !info) return;
+    const options = ext.optionsUrl(extensionId);
+    this.popup([
+      { label: info.name.replace(/&/g, '&&'), click: () => this.newTab({ url: info.storeUrl }) },
+      { type: 'separator' },
+      { label: 'Opciones', enabled: !!options, click: () => options && this.newTab({ url: options }) },
+      { label: 'Administrar extensiones', click: () => this.openInternalPage('extensions') },
+      { type: 'separator' },
+      { label: 'Quitar de Callisto…', click: () => void ext.removeWithConfirmation(extensionId, null) },
+    ]);
   }
 
   /** Menú del botón de perfil: cambiar de perfil, ventana privada, agregar o administrar perfiles. */
@@ -1164,6 +1234,7 @@ export class BrowserWindowController {
           history: () => this.openInternalPage('history'),
           downloads: () => this.openInternalPage('downloads'),
           passwords: () => this.openInternalPage('passwords'),
+          extensions: () => this.openInternalPage('extensions'),
           zoom: (d) => this.activeTab.zoom(d),
           find: () => this.openFind(),
           settings: () => this.openInternalPage('settings'),
@@ -1231,6 +1302,8 @@ export class BrowserWindowController {
         reload: () => tab.reload(false),
         inspect: (x, y) => wc.inspectElement(x, y),
       }),
+      // Lo que agregan las extensiones (chrome.contextMenus)
+      tab.kind === 'web' ? (profile.extensions?.chrome.getContextMenuItems(wc, params) ?? []) : [],
     );
   }
 

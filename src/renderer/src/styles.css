@@ -766,3 +766,29 @@ html, body, #root {
 .password-offer-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .password-offer-dots { letter-spacing: 1px; color: var(--muted); overflow: hidden; white-space: nowrap; }
 .password-offer .prompt-buttons { justify-content: flex-end; margin-top: 4px; }
+
+/* ---------------------------------------------------------------- extensiones */
+
+/* Botones de las extensiones (<browser-action-list> de electron-chrome-extensions, con shadow DOM) */
+browser-action-list.extension-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+browser-action-list.extension-actions::part(action) {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  background-size: 16px;
+}
+browser-action-list.extension-actions::part(action):hover { background-color: var(--hover); }
+browser-action-list.extension-actions::part(action):active { background-color: var(--active); }
+browser-action-list.extension-actions::part(badge) { font: 600 9px/1 "Segoe UI", sans-serif; border-radius: 4px; padding: 1px 3px; }
+
+.extension-prompt { width: min(420px, calc(100vw - 16px)); left: 50%; right: auto; transform: translateX(-50%); padding: 16px 18px; z-index: 30; }
+.extension-prompt-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.extension-prompt-head img { border-radius: 6px; flex-shrink: 0; }
+.extension-prompt-noicon { width: 32px; height: 32px; border-radius: 6px; background: var(--active); flex-shrink: 0; }
+.extension-prompt-label { margin: 6px 0 4px; color: var(--muted); }
+.extension-prompt-list { margin: 0; padding-left: 20px; }
+.extension-prompt-list li { margin: 2px 0; }
+.extension-prompt-note { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.extension-prompt .prompt-buttons { justify-content: flex-end; }

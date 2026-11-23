@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { safeStorage, session, type Session, type WebContents } from 'electron';
 import { PasswordVault, type KeyWrapper } from './password-vault';
+import type { ExtensionManager } from './extensions/manager';
 import { FaviconLoader } from './favicon';
 import { openDatabase, openMemoryDatabase } from './db';
 import { HistoryStore } from './history-store';
@@ -83,6 +84,8 @@ export class Profile extends EventEmitter<ProfileEvents> {
   readonly passwords: PasswordVault;
   /** Hasta cuándo vale la última verificación de identidad (Windows Hello) para ver o editar contraseñas. */
   passwordsAuthorizedUntil = 0;
+  /** Extensiones del perfil (las crea ProfileManager); null en los perfiles privados. */
+  extensions: ExtensionManager | null = null;
   readonly defaultDownloadDir: string;
   /** Los perfiles privados no guardan historial. */
   readonly recordsHistory: boolean;

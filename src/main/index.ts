@@ -10,6 +10,7 @@ import { registerPasswordIpc } from './passwords';
 import { ProfileManager } from './profiles';
 import { ProfileRegistry } from './profile-registry';
 import { buildUserAgent } from '../shared/user-agent';
+import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 
 // ---------------------------------------------------------------- antes de que Electron esté listo
 configureUserData();
@@ -58,6 +59,8 @@ if (!app.requestSingleInstanceLock()) {
     uiSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     uiSession.setPermissionCheckHandler(() => false);
     serveInternalUi(uiSession, join(__dirname, '../renderer'));
+    // Íconos de los botones de las extensiones (crx://) en la interfaz
+    ElectronChromeExtensions.handleCRXProtocol(uiSession);
 
     const devUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
     const uiUrl = devUrl ? devUrl : `${UI_ORIGIN}/index.html`;
@@ -83,6 +86,7 @@ if (!app.requestSingleInstanceLock()) {
         uiSession,
         uiUrl,
         uiPreload: join(__dirname, '../preload/ui.js'),
+        extensionApiPreload: join(__dirname, '../preload/extension-apis.js'),
       },
       registry,
     );

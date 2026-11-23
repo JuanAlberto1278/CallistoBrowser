@@ -192,6 +192,7 @@ export interface AppMenuActions {
   history(): void;
   downloads(): void;
   passwords(): void;
+  extensions(): void;
   zoom(direction: 'in' | 'out' | 'reset'): void;
   find(): void;
   settings(): void;
@@ -208,6 +209,7 @@ export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[] 
     { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },
     { label: 'Descargas', accelerator: 'Ctrl+J', registerAccelerator: false, click: () => a.downloads() },
     { label: 'Contraseñas', click: () => a.passwords() },
+    { label: 'Extensiones', click: () => a.extensions() },
     SEP,
     {
       label: `Zoom (${info.zoomPercent} %)`,

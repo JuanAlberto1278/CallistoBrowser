@@ -90,8 +90,20 @@ export class Tab extends EventEmitter<TabEvents> {
   openHandler: OpenHandler | null = null;
   /** Abierta por el usuario como pestaña nueva (no por una página): vacía, muestra la página de nueva pestaña. */
   readonly newTabPage: boolean;
+  private groupIdValue: number | null = null;
+
   /** Grupo de pestañas al que pertenece (lo administra la ventana). */
-  groupId: number | null = null;
+  get groupId(): number | null {
+    return this.groupIdValue;
+  }
+
+  set groupId(id: number | null) {
+    if (id === this.groupIdValue) return;
+    this.groupIdValue = id;
+    // Las extensiones (chrome.tabs) ven el grupo de cada pestaña: 'tab-updated' es el aviso que espera
+    // electron-chrome-extensions para volver a leer los datos de la pestaña y emitir tabs.onUpdated
+    if (!this.webContents.isDestroyed()) (this.webContents as unknown as NodeJS.EventEmitter).emit('tab-updated');
+  }
   /** Contraseñas (los administra passwords.ts): lo enviado, el usuario de un primer paso y la oferta de guardar. */
   pendingLogin: PendingLogin | null = null;
   usernameCandidate: { origin: string; username: string; at: number } | null = null;

@@ -10,6 +10,7 @@ import { TabStrip } from './TabStrip';
 import { DownloadsButton, DownloadsFlyout } from './Downloads';
 import { NewTabPage } from './NewTabPage';
 import { PasswordOfferBubble } from './PasswordOffer';
+import { ExtensionActions, ExtensionInstallDialog } from './Extensions';
 import { BackIcon, CloseIcon, ForwardIcon, MaskIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
 
 /** Botón de perfil: inicial con el color del perfil, o "Privada" en una ventana privada. */
@@ -84,6 +85,7 @@ export function App() {
   const reportDownloads = useCallback((bottom: number) => setOverlays((o) => (o.downloads === bottom ? o : { ...o, downloads: bottom })), []);
   const reportGroup = useCallback((bottom: number) => setOverlays((o) => (o.group === bottom ? o : { ...o, group: bottom })), []);
   const reportBookmarks = useCallback((bottom: number) => setOverlays((o) => (o.bookmarks === bottom ? o : { ...o, bookmarks: bottom })), []);
+  const reportExtension = useCallback((bottom: number) => setOverlays((o) => (o.extension === bottom ? o : { ...o, extension: bottom })), []);
   const reportPassword = useCallback((bottom: number) => setOverlays((o) => (o.password === bottom ? o : { ...o, password: bottom })), []);
 
   useEffect(() => {
@@ -153,6 +155,7 @@ export function App() {
           onSubmit={(text) => api.navigate(text)}
           onResetZoom={() => api.resetZoom()}
         />
+        {state?.extensions.partition && <ExtensionActions partition={state.extensions.partition} />}
         {downloads && <DownloadsButton state={downloads} onClick={() => api.setDownloadsPanel(!downloads.panelOpen)} />}
         {state && <ProfileButton profile={state.profile} />}
         <button className="icon-button" data-testid="app-menu" title="Configuración y más" aria-label="Configuración y más" onClick={() => api.showAppMenu()}>
@@ -190,6 +193,7 @@ export function App() {
         <PasswordOfferBubble key={tab.passwordOffer.id} offer={tab.passwordOffer} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportPassword} />
       )}
       {downloads && <DownloadsFlyout state={downloads} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportDownloads} />}
+      {state?.extensions.prompt && <ExtensionInstallDialog key={state.extensions.prompt.id} prompt={state.extensions.prompt} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportExtension} />}
     </div>
   );
 }

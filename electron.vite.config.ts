@@ -13,6 +13,9 @@ export default defineConfig({
   },
   preload: {
     build: {
+      // Las dependencias (electron-chrome-extensions/browser-action) van DENTRO del preload: en sandbox no puede cargar
+      // módulos de node_modules
+      externalizeDeps: false,
       rollupOptions: {
         // Los preloads en sandbox deben ser CommonJS de un solo archivo: ningún módulo con código puede ser compartido por
         // dos preloads (iría a un archivo aparte que el preload no puede cargar). Lo comprueban las pruebas e2e.
@@ -26,6 +29,8 @@ export default defineConfig({
           internal: resolve(__dirname, 'src/preload/internal.ts'),
           // Menú de sugerencias de contraseñas (vista propia de la interfaz)
           autofill: resolve(__dirname, 'src/preload/autofill.ts'),
+          // Páginas y service workers de las extensiones: `browser` = `chrome` y las APIs de Callisto
+          'extension-apis': resolve(__dirname, 'src/preload/extension-apis.ts'),
         },
       },
     },
@@ -47,6 +52,7 @@ export default defineConfig({
           bookmarks: resolve(__dirname, 'src/renderer/bookmarks.html'),
           profiles: resolve(__dirname, 'src/renderer/profiles.html'),
           passwords: resolve(__dirname, 'src/renderer/passwords.html'),
+          extensions: resolve(__dirname, 'src/renderer/extensions.html'),
           // Menú de sugerencias de contraseñas (callisto://ui/autofill.html)
           autofill: resolve(__dirname, 'src/renderer/autofill.html'),
         },

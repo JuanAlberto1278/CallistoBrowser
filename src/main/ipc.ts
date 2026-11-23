@@ -13,12 +13,13 @@ import { BookmarkError } from './bookmark-store';
 import type { ProfileManager } from './profiles';
 import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
 import type { ProfilesSnapshot } from '../shared/internal-api';
-import { INTERNAL_IPC, type ClearPeriod, type HistoryEntry, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
+import { INTERNAL_IPC, type ClearPeriod, type ExtensionsSnapshot, type HistoryEntry, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
 import { SEARCH_ENGINES, type SearchEngineId } from '../shared/settings';
 import { zoomPercent } from '../shared/zoom';
 import { answerPasswordOffer } from './passwords';
+import { WEBSTORE_ORIGIN, isExtensionId } from '../shared/extensions';
 
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
@@ -84,6 +85,12 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   ipcMain.on(IPC.moveGroup, (e, id: unknown, index: unknown) => {
     const c = from(e);
     if (c && isId(id) && typeof index === 'number' && Number.isSafeInteger(index)) c.moveGroup(id, index);
+  });
+  ipcMain.on(IPC.answerExtensionInstall, (e, id: unknown, allow: unknown) => {
+    if (isId(id)) from(e)?.answerExtensionInstall(id, allow === true);
+  });
+  ipcMain.on(IPC.extensionMenu, (e, extensionId: unknown) => {
+    if (isExtensionId(extensionId)) from(e)?.showExtensionMenu(extensionId);
   });
   ipcMain.on(IPC.answerPasswordOffer, (e, id: unknown, answer: unknown, username: unknown) => {
     const c = from(e);
@@ -415,11 +422,51 @@ function registerInternalIpc(): void {
   ipcMain.on(INTERNAL_IPC.openPage, (e, page: unknown) => {
     const tab = Tab.fromWebContents(e.sender);
     if (!tab || tab.kind !== 'internal' || !internalPageOf(e.senderFrame?.url ?? '')) return;
-    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks' && page !== 'profiles' && page !== 'passwords') return;
+    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks' && page !== 'profiles' && page !== 'passwords' && page !== 'extensions') return;
     BrowserWindowController.ofTab(tab)?.navigateTab(tab, `callisto://${page}`, false);
   });
 
   registerPasswordsPageIpc();
+  registerExtensionsPageIpc();
+}
+
+// ---------------------------------------------------------------- callisto://extensions
+
+function registerExtensionsPageIpc(): void {
+  const ctxOf = (e: IpcMainInvokeEvent | IpcMainEvent) => fromInternal(e, 'extensions');
+  const managerOf = (e: IpcMainInvokeEvent | IpcMainEvent) => {
+    const ctx = ctxOf(e);
+    return ctx ? { ctx, ext: ctx.profile.extensions } : undefined;
+  };
+  ipcMain.handle(INTERNAL_IPC.extensionsList, async (e): Promise<ExtensionsSnapshot> => {
+    const m = managerOf(e) ?? denied();
+    if (!m.ext) return { available: false, items: [] };
+    await m.ext.ready;
+    return { available: true, items: m.ext.list() };
+  });
+  ipcMain.handle(INTERNAL_IPC.extensionsSetEnabled, async (e, id: unknown, enabled: unknown) => {
+    const m = managerOf(e) ?? denied();
+    if (m.ext && isExtensionId(id)) await m.ext.setEnabled(id, enabled === true);
+  });
+  ipcMain.handle(INTERNAL_IPC.extensionsRemove, (e, id: unknown) => {
+    const m = managerOf(e) ?? denied();
+    if (m.ext && isExtensionId(id)) m.ext.remove(id);
+  });
+  ipcMain.handle(INTERNAL_IPC.extensionsUpdate, async (e) => {
+    const m = managerOf(e) ?? denied();
+    return { updated: m.ext ? (await m.ext.checkUpdates()).length : 0 };
+  });
+  ipcMain.on(INTERNAL_IPC.extensionsOptions, (e, id: unknown) => {
+    const m = managerOf(e);
+    const url = m?.ext && isExtensionId(id) ? m.ext.optionsUrl(id) : null;
+    if (m && url) m.ctx.win.newTab({ url, index: m.ctx.win.tabs.indexOf(m.ctx.tab) + 1, openerId: m.ctx.tab.id });
+  });
+  ipcMain.on(INTERNAL_IPC.extensionsOpenStore, (e, id: unknown) => {
+    const m = managerOf(e);
+    if (!m) return;
+    const url = isExtensionId(id) ? `${WEBSTORE_ORIGIN}/detail/${id}` : `${WEBSTORE_ORIGIN}/category/extensions`;
+    m.ctx.win.newTab({ url, index: m.ctx.win.tabs.indexOf(m.ctx.tab) + 1, openerId: m.ctx.tab.id });
+  });
 }
 
 // ---------------------------------------------------------------- callisto://passwords

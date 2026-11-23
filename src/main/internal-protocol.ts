@@ -17,7 +17,8 @@ const UI_CSP = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  // crx: íconos de las extensiones (los sirve electron-chrome-extensions en la sesión de la interfaz)
+  "img-src 'self' data: crx:",
   "connect-src 'none'",
   "object-src 'none'",
   "base-uri 'none'",

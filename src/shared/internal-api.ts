@@ -7,6 +7,7 @@ import type { BookmarkNode, FolderOption } from './bookmarks';
 import type { ProfileColor } from './profiles';
 import type { SearchEngineId, Settings } from './settings';
 import type { LoginSummary, VaultStatus } from './passwords';
+import type { ExtensionInfo } from './extensions';
 
 export interface HistoryEntry {
   id: number;
@@ -73,7 +74,19 @@ export const INTERNAL_IPC = {
   passwordsRemove: 'callisto-internal:passwords-remove',
   passwordsUnblock: 'callisto-internal:passwords-unblock',
   passwordsSetOffer: 'callisto-internal:passwords-set-offer',
+  extensionsList: 'callisto-internal:extensions-list',
+  extensionsSetEnabled: 'callisto-internal:extensions-set-enabled',
+  extensionsRemove: 'callisto-internal:extensions-remove',
+  extensionsOptions: 'callisto-internal:extensions-options',
+  extensionsUpdate: 'callisto-internal:extensions-update',
+  extensionsOpenStore: 'callisto-internal:extensions-open-store',
 } as const;
+
+export interface ExtensionsSnapshot {
+  /** false en una ventana privada (sin extensiones). */
+  available: boolean;
+  items: ExtensionInfo[];
+}
 
 export interface PasswordEntry extends LoginSummary {
   host: string;
@@ -159,6 +172,17 @@ export interface CallistoInternalApi {
     unblock(origin: string): Promise<void>;
     setOfferToSave(on: boolean): Promise<void>;
   };
+  extensions: {
+    list(): Promise<ExtensionsSnapshot>;
+    setEnabled(id: string, enabled: boolean): Promise<void>;
+    remove(id: string): Promise<void>;
+    /** Abre la página de opciones de la extensión en una pestaña nueva. */
+    options(id: string): void;
+    /** Busca versiones nuevas en la Chrome Web Store; devuelve cuántas se actualizaron. */
+    checkUpdates(): Promise<{ updated: number }>;
+    /** Abre la Chrome Web Store (o la página de una extensión) en una pestaña nueva. */
+    openStore(id?: string): void;
+  };
   /** Abre otra página interna (p. ej. el historial desde la configuración) en esta pestaña. */
-  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks' | 'profiles' | 'passwords'): void;
+  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks' | 'profiles' | 'passwords' | 'extensions'): void;
 }

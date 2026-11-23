@@ -11,3 +11,13 @@ declare global {
 }
 
 export {};
+
+// <browser-action-list> de electron-chrome-extensions (botones de las extensiones)
+declare module 'react' {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace JSX {
+    interface IntrinsicElements {
+      'browser-action-list': { partition?: string; alignment?: string; tab?: string; class?: string; ref?: unknown; 'data-testid'?: string };
+    }
+  }
+}

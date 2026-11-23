@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: botón de prueba",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto (botón, popup, script de contenido, opciones y menú).",
+  "permissions": [
+    "storage",
+    "contextMenus"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Botón de prueba"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}

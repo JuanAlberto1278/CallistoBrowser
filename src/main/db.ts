@@ -146,6 +146,21 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 5,
+    sql: `
+      -- Extensiones instaladas (V0.10). Los archivos están en <perfil>/Extensions/<id>/<dir>.
+      CREATE TABLE extensions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL,
+        dir TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        installed INTEGER NOT NULL,
+        updated INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 export function migrate(db: DatabaseSync, migrations: Migration[] = MIGRATIONS): number {

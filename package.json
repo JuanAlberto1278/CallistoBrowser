@@ -1,7 +1,7 @@
 {
   "name": "callisto",
   "productName": "Callisto",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Callisto — navegador web de escritorio para Windows",
   "private": true,
   "main": "out/main/index.js",
@@ -14,6 +14,10 @@
     "test:e2e": "npm run build && playwright test",
     "package:dir": "npm run build && electron-builder --dir",
     "check": "npm run typecheck && npm run test && npm run test:e2e"
+  },
+  "dependencies": {
+    "electron-chrome-extensions": "4.10.0",
+    "electron-chrome-web-store": "0.13.0"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
@@ -29,5 +33,8 @@
     "typescript": "7.0.2",
     "vite": "8.3.8",
     "vitest": "5.1.1"
+  },
+  "overrides": {
+    "adm-zip": "0.6.1"
   }
 }

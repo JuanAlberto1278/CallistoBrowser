@@ -54,6 +54,14 @@ const api: CallistoInternalApi = {
     unblock: (origin) => ipcRenderer.invoke(INTERNAL_IPC.passwordsUnblock, String(origin)),
     setOfferToSave: (on) => ipcRenderer.invoke(INTERNAL_IPC.passwordsSetOffer, on === true),
   },
+  extensions: {
+    list: () => ipcRenderer.invoke(INTERNAL_IPC.extensionsList),
+    setEnabled: (id, enabled) => ipcRenderer.invoke(INTERNAL_IPC.extensionsSetEnabled, String(id), enabled === true),
+    remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.extensionsRemove, String(id)),
+    options: (id) => ipcRenderer.send(INTERNAL_IPC.extensionsOptions, String(id)),
+    checkUpdates: () => ipcRenderer.invoke(INTERNAL_IPC.extensionsUpdate),
+    openStore: (id) => ipcRenderer.send(INTERNAL_IPC.extensionsOpenStore, id === undefined ? undefined : String(id)),
+  },
   openPage: (page) => ipcRenderer.send(INTERNAL_IPC.openPage, String(page)),
 };
 

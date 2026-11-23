@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: APIs de prueba",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto (favoritos y grupos).",
+  "permissions": [
+    "bookmarks",
+    "tabGroups",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "sw.js"
+  }
+}

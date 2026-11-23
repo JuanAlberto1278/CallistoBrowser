@@ -1,6 +1,8 @@
 // Preload de la interfaz del navegador: expone a la interfaz una API mínima y tipada.
 // No expone ipcRenderer ni nada de Node.
 import { contextBridge, ipcRenderer } from 'electron';
+// Botones de las extensiones (<browser-action-list>): el elemento y su API, de electron-chrome-extensions
+import { injectBrowserAction } from 'electron-chrome-extensions/browser-action';
 import { IPC, type CallistoUiApi, type WindowState } from '../shared/ipc';
 
 const api: CallistoUiApi = {
@@ -49,6 +51,8 @@ const api: CallistoUiApi = {
     }),
   groupAction: (id, action) => ipcRenderer.send(IPC.groupAction, Number(id), String(action)),
   moveGroup: (id, index) => ipcRenderer.send(IPC.moveGroup, Number(id), Number(index)),
+  answerExtensionInstall: (id, allow) => ipcRenderer.send(IPC.answerExtensionInstall, Number(id), allow === true),
+  showExtensionMenu: (extensionId) => ipcRenderer.send(IPC.extensionMenu, String(extensionId)),
   answerPasswordOffer: (id, answer, username) => ipcRenderer.send(IPC.answerPasswordOffer, Number(id), String(answer), username === undefined ? undefined : String(username)),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
@@ -65,3 +69,4 @@ const api: CallistoUiApi = {
 };
 
 contextBridge.exposeInMainWorld('callisto', api);
+injectBrowserAction();

@@ -7,6 +7,7 @@ import type { BookmarkEditorState, BookmarkNode } from './bookmarks';
 import type { WindowProfile } from './profiles';
 import type { GroupAction, GroupColor, TabGroupState } from './tab-groups';
 import type { PasswordOffer } from './passwords';
+import type { ExtensionInstallPrompt } from './extensions';
 
 export interface Notice {
   id: number;
@@ -132,6 +133,14 @@ export interface WindowState {
   groupEditor: number | null;
   downloads: DownloadsUiState;
   bookmarks: BookmarksUiState;
+  extensions: ExtensionsUiState;
+}
+
+export interface ExtensionsUiState {
+  /** Partición de la sesión del perfil (para la lista de botones); null = sin extensiones (ventana privada). */
+  partition: string | null;
+  /** "¿Agregar la extensión?" pendiente en esta ventana. */
+  prompt: ExtensionInstallPrompt | null;
 }
 
 export const IPC = {
@@ -177,6 +186,8 @@ export const IPC = {
   groupAction: 'callisto:group-action',
   moveGroup: 'callisto:move-group',
   answerPasswordOffer: 'callisto:answer-password-offer',
+  answerExtensionInstall: 'callisto:answer-extension-install',
+  extensionMenu: 'callisto:extension-menu',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
@@ -250,6 +261,10 @@ export interface CallistoUiApi {
   moveGroup(id: number, index: number): void;
   /** Respuesta a la oferta de guardar una contraseña ('save' puede llevar el usuario corregido). */
   answerPasswordOffer(id: number, answer: 'save' | 'never' | 'dismiss', username?: string): void;
+  /** Respuesta a "¿Agregar la extensión?". */
+  answerExtensionInstall(id: number, allow: boolean): void;
+  /** Menú (clic derecho) del botón de una extensión. */
+  showExtensionMenu(extensionId: string): void;
   onState(cb: (state: WindowState) => void): void;
   /** Favicons nuevos: clave -> URL data: de la imagen (la interfaz los guarda). */
   onFavicons(cb: (favicons: Record<string, string>) => void): void;

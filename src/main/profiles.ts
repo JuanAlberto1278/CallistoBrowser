@@ -1,6 +1,8 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { webContents, type Session } from 'electron';
+import { webContents, type BaseWindow, type Session, type WebContents } from 'electron';
+import { ExtensionManager, type ExtensionHost } from './extensions/manager';
+import { registerCallistoApis } from './extensions/callisto-apis';
 import { Profile, type InternalPages } from './profile';
 import { ProfileRegistry } from './profile-registry';
 import { SessionStore } from './session-store';
@@ -19,6 +21,8 @@ export interface ProfileManagerConfig {
   uiSession: Session;
   uiUrl: string;
   uiPreload: string;
+  /** Preload de las páginas y service workers de las extensiones (`browser` = `chrome`, APIs de Callisto). */
+  extensionApiPreload: string;
 }
 
 interface Runtime {
@@ -78,6 +82,9 @@ export class ProfileManager implements ProfilesApi {
     });
     profile.history.expire();
     this.wire(profile);
+    profile.extensions = new ExtensionManager(profile, join(this.cfg.userDataDir, 'Profiles', id, 'Extensions'), this.extensionHost, { apiPreload: this.cfg.extensionApiPreload });
+    profile.extensions.on('changed', () => BrowserWindowController.refreshAll());
+    registerCallistoApis(profile.extensions, { windows: () => this.windowsOf(profile) });
 
     const store = new SessionStore(profile.kv);
     const closedTabs = new ClosedTabs(store.load().closed);
@@ -140,6 +147,56 @@ export class ProfileManager implements ProfilesApi {
   private windowsOf(profile: Profile): BrowserWindowController[] {
     return [...BrowserWindowController.all].filter((w) => w.ctx.profile === profile && !w.closing);
   }
+
+  /** La ventana de la pestaña `source`; si no, la actual (si es del perfil) o la última del perfil. */
+  private windowFor(profile: Profile, source: WebContents | null): BrowserWindowController | undefined {
+    const tab = source ? Tab.fromWebContents(source) : undefined;
+    const own = tab ? BrowserWindowController.ofTab(tab) : undefined;
+    if (own && !own.closing) return own;
+    const current = BrowserWindowController.current();
+    return current && current.ctx.profile === profile && !current.closing ? current : this.windowsOf(profile).at(-1);
+  }
+
+  /** Lo que las extensiones de un perfil pueden pedirle a las ventanas de Callisto. */
+  private readonly extensionHost: ExtensionHost = {
+    createTab: async (profile, d) => {
+      const target = d.windowId !== undefined ? this.windowsOf(profile).find((w) => w.win.id === d.windowId) : undefined;
+      const win = target ?? this.windowFor(profile, null) ?? this.openProfile(profile.id);
+      const url = typeof d.url === 'string' && d.url ? d.url : undefined;
+      const tab = win.newTab({ url, activate: d.active !== false, index: typeof d.index === 'number' ? d.index : undefined });
+      return [tab.webContents, win.win];
+    },
+    selectTab: (wc) => {
+      const tab = Tab.fromWebContents(wc);
+      const win = tab && BrowserWindowController.ofTab(tab);
+      if (!tab || !win) return;
+      win.activate(tab);
+      win.focus();
+    },
+    removeTab: (wc) => {
+      const tab = Tab.fromWebContents(wc);
+      const win = tab && BrowserWindowController.ofTab(tab);
+      if (tab && win) win.closeTab(tab);
+    },
+    createWindow: async (profile, d) => {
+      const url = Array.isArray(d.url) ? d.url[0] : d.url;
+      const w = new BrowserWindowController(this.runtime(profile.id).ctx, { url: typeof url === 'string' && url ? url : undefined });
+      return w.win;
+    },
+    removeWindow: (win: BaseWindow) => {
+      for (const w of BrowserWindowController.all) if (w.win === win && !win.isDestroyed()) win.close();
+    },
+    confirmInstall: (profile, source, prompt) => this.windowFor(profile, source)?.askExtensionInstall(prompt) ?? Promise.resolve(false),
+    parentWindow: (profile, source) => this.windowFor(profile, source)?.win ?? null,
+    notify: (source, text) => {
+      const tab = source ? Tab.fromWebContents(source) : undefined;
+      if (tab) tab.showNotice('warning', text);
+    },
+    assignTabDetails: (details, wc) => {
+      const tab = Tab.fromWebContents(wc);
+      if (tab) (details as chrome.tabs.Tab & { groupId: number }).groupId = tab.groupId ?? -1;
+    },
+  };
 
   /**
    * Abre (o muestra) un perfil. Si ya tiene ventanas, enfoca la última. Si no, restaura su sesión (según su

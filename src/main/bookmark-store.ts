@@ -11,6 +11,35 @@ export class BookmarkError extends Error {}
 export class BookmarkStore {
   constructor(private readonly db: DatabaseSync, private readonly now: () => number = Date.now) {}
 
+  /** Cambios puntuales (para los eventos de chrome.bookmarks de las extensiones). */
+  private readonly observers = new Set<(change: BookmarkChange) => void>();
+
+  onChange(fn: (change: BookmarkChange) => void): () => void {
+    this.observers.add(fn);
+    return () => this.observers.delete(fn);
+  }
+
+  private notify(change: BookmarkChange): void {
+    for (const fn of this.observers) {
+      try {
+        fn(change);
+      } catch {
+        /* un observador no corta el cambio */
+      }
+    }
+  }
+
+  /** Fecha de creación (ms). */
+  created(id: number): number {
+    return (this.db.prepare('SELECT created FROM bookmarks WHERE id = ?').get(id) as { created: number } | undefined)?.created ?? 0;
+  }
+
+  /** Los favoritos (no carpetas) agregados más recientemente. */
+  recent(limit: number): BookmarkNode[] {
+    const ids = this.db.prepare("SELECT id FROM bookmarks WHERE kind = 'url' ORDER BY created DESC, id DESC LIMIT ?").all(limit) as Array<{ id: number }>;
+    return ids.map((r) => this.get(r.id)).filter((n): n is BookmarkNode => !!n);
+  }
+
   get(id: number): BookmarkNode | undefined {
     return this.db.prepare(`SELECT ${COLS} FROM bookmarks WHERE id = ?`).get(id) as unknown as BookmarkNode | undefined;
   }
@@ -77,6 +106,7 @@ export class BookmarkStore {
       .run(parentId, kind, title.slice(0, MAX_TITLE), url, 1e9, this.now());
     const id = Number(res.lastInsertRowid);
     this.place(parentId, id, index);
+    this.notify({ type: 'created', id });
     return id;
   }
 
@@ -90,6 +120,8 @@ export class BookmarkStore {
       if (!isBookmarkableUrl(patch.url)) throw new BookmarkError('Esa dirección no se puede guardar como favorito.');
       this.db.prepare('UPDATE bookmarks SET url = ? WHERE id = ?').run(patch.url, id);
     }
+    const after = this.get(id)!;
+    if (after.title !== node.title || after.url !== node.url) this.notify({ type: 'changed', id });
   }
 
   /** Mueve a otra carpeta (o dentro de la misma) en la posición indicada (al final si no se indica). */
@@ -110,13 +142,25 @@ export class BookmarkStore {
       this.db.exec('ROLLBACK');
       throw e;
     }
+    const after = this.get(id)!;
+    if (after.parentId !== from || after.position !== node.position) {
+      this.notify({ type: 'moved', id, parentId, index: after.position, oldParentId: from, oldIndex: node.position });
+    }
   }
 
   /** Borra un favorito o una carpeta con todo su contenido. */
   remove(id: number): void {
     const node = this.requireEditable(id);
+    const tree = this.observers.size ? this.subtree(id) : null;
     this.db.prepare('DELETE FROM bookmarks WHERE id = ?').run(id);
     this.renumber(node.parentId!);
+    if (tree) this.notify({ type: 'removed', id, parentId: node.parentId!, index: node.position, tree });
+  }
+
+  /** Un nodo con todo su contenido (para avisar lo que se borró). */
+  subtree(id: number): BookmarkTree {
+    const node = this.get(id)!;
+    return { ...node, created: this.created(id), children: node.kind === 'folder' ? this.children(id).map((c) => this.subtree(c.id)) : undefined };
   }
 
   // ---------------------------------------------------------------- interno
@@ -158,3 +202,14 @@ export class BookmarkStore {
     rows.forEach((r, i) => upd.run(i, r.id));
   }
 }
+
+export interface BookmarkTree extends BookmarkNode {
+  created: number;
+  children?: BookmarkTree[];
+}
+
+export type BookmarkChange =
+  | { type: 'created'; id: number }
+  | { type: 'changed'; id: number }
+  | { type: 'moved'; id: number; parentId: number; index: number; oldParentId: number; oldIndex: number }
+  | { type: 'removed'; id: number; parentId: number; index: number; tree: BookmarkTree };
