@@ -1,13 +1,13 @@
 {
   "name": "callisto",
   "productName": "Callisto",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Callisto — navegador web de escritorio para Windows",
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node scripts/build-auth-helper.cjs && electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

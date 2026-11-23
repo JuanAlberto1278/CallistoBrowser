@@ -81,3 +81,18 @@ export const EditIcon = () => (
 export const MaskIcon = () => (
   <svg {...base}><path d="M1.8 6.2c1.6-1 3.8-1.4 6.2-1.4s4.6.4 6.2 1.4c0 3-1.3 4.8-3.3 4.8-1.3 0-2-.8-2.9-.8s-1.6.8-2.9.8c-2 0-3.3-1.8-3.3-4.8Z" /><circle cx="5.4" cy="7.7" r="0.9" fill="currentColor" /><circle cx="10.6" cy="7.7" r="0.9" fill="currentColor" /></svg>
 );
+export const KeyIcon = () => (
+  <svg {...base}><circle cx="5.5" cy="10.5" r="3" /><path d="M7.6 8.4 13.5 2.5M11.5 4.5l1.8 1.8M10 6l1.5 1.5" /></svg>
+);
+export const EyeIcon = () => (
+  <svg {...base}><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" /><circle cx="8" cy="8" r="2" /></svg>
+);
+export const EyeOffIcon = () => (
+  <svg {...base}><path d="M2.5 2.5l11 11M6.6 4.4A6 6 0 0 1 8 3.5c4 0 6.5 4.5 6.5 4.5a11 11 0 0 1-1.8 2.3M10.6 11.8A6 6 0 0 1 8 12.5C4 12.5 1.5 8 1.5 8a11 11 0 0 1 2.4-2.9M6.6 6.6a2 2 0 0 0 2.8 2.8" /></svg>
+);
+export const CopyIcon = () => (
+  <svg {...base}><rect x="5.5" y="5.5" width="8" height="8" rx="1.2" /><path d="M10.5 3.5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h.5" /></svg>
+);
+export const TrashIcon = () => (
+  <svg {...base}><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5" /></svg>
+);

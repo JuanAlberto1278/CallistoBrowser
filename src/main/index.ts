@@ -6,6 +6,7 @@ import { configureTestMode } from './test-mode';
 import { registerInternalScheme, serveInternalPages, serveInternalUi, UI_ORIGIN } from './internal-protocol';
 import { BrowserWindowController } from './window';
 import { registerIpc, registerProfilesIpc } from './ipc';
+import { registerPasswordIpc } from './passwords';
 import { ProfileManager } from './profiles';
 import { ProfileRegistry } from './profile-registry';
 import { buildUserAgent } from '../shared/user-agent';
@@ -62,6 +63,7 @@ if (!app.requestSingleInstanceLock()) {
     const uiUrl = devUrl ? devUrl : `${UI_ORIGIN}/index.html`;
     const trustedOrigin = devUrl ? new URL(devUrl).origin : UI_ORIGIN;
     registerIpc((url) => url.startsWith(trustedOrigin + '/'));
+    registerPasswordIpc((url) => url.startsWith(trustedOrigin + '/'));
 
     // Sesión de las páginas internas (historial, configuración): en memoria, sin permisos, separada de la web
     const internalSession = session.fromPartition('callisto-internal');

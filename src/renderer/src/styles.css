@@ -756,3 +756,13 @@ html, body, #root {
   text-align: left;
 }
 .group-actions button:hover { background: var(--hover); }
+
+/* ---------------------------------------------------------------- contraseñas */
+
+.password-offer { width: min(360px, calc(100vw - 16px)); right: 88px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.password-offer .flyout-header { padding: 0; }
+.password-offer-title { display: inline-flex; align-items: center; gap: 8px; }
+.password-offer-site { margin: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.password-offer-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.password-offer-dots { letter-spacing: 1px; color: var(--muted); overflow: hidden; white-space: nowrap; }
+.password-offer .prompt-buttons { justify-content: flex-end; margin-top: 4px; }

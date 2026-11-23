@@ -191,6 +191,7 @@ export interface AppMenuActions {
   newPrivateWindow(): void;
   history(): void;
   downloads(): void;
+  passwords(): void;
   zoom(direction: 'in' | 'out' | 'reset'): void;
   find(): void;
   settings(): void;
@@ -206,6 +207,7 @@ export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[] 
     { label: 'Favoritos', submenu: info.bookmarks?.length ? info.bookmarks : [{ label: '(vacío)', enabled: false }] },
     { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },
     { label: 'Descargas', accelerator: 'Ctrl+J', registerAccelerator: false, click: () => a.downloads() },
+    { label: 'Contraseñas', click: () => a.passwords() },
     SEP,
     {
       label: `Zoom (${info.zoomPercent} %)`,

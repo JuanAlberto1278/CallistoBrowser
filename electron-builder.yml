@@ -7,6 +7,10 @@ files:
   - out/**
   - package.json
 asar: true
+# Ayudante de Windows Hello (V0.9): fuera del asar, porque se ejecuta como programa aparte
+extraResources:
+  - from: build-native/callisto-auth.exe
+    to: callisto-auth.exe
 win:
   target:
     - target: dir

@@ -6,6 +6,7 @@ import type { DownloadEntry, DownloadPrompt } from './downloads';
 import type { BookmarkEditorState, BookmarkNode } from './bookmarks';
 import type { WindowProfile } from './profiles';
 import type { GroupAction, GroupColor, TabGroupState } from './tab-groups';
+import type { PasswordOffer } from './passwords';
 
 export interface Notice {
   id: number;
@@ -44,6 +45,8 @@ export interface TabState {
   newTabPage: boolean;
   /** Grupo de la pestaña (null = sin grupo). */
   groupId: number | null;
+  /** Oferta de guardar (o actualizar) la contraseña recién enviada. */
+  passwordOffer: PasswordOffer | null;
 }
 
 export interface DownloadsUiState {
@@ -173,6 +176,7 @@ export const IPC = {
   updateGroup: 'callisto:update-group',
   groupAction: 'callisto:group-action',
   moveGroup: 'callisto:move-group',
+  answerPasswordOffer: 'callisto:answer-password-offer',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
@@ -244,6 +248,8 @@ export interface CallistoUiApi {
   groupAction(id: number, action: GroupAction): void;
   /** Mueve un grupo entero a la posición indicada. */
   moveGroup(id: number, index: number): void;
+  /** Respuesta a la oferta de guardar una contraseña ('save' puede llevar el usuario corregido). */
+  answerPasswordOffer(id: number, answer: 'save' | 'never' | 'dismiss', username?: string): void;
   onState(cb: (state: WindowState) => void): void;
   /** Favicons nuevos: clave -> URL data: de la imagen (la interfaz los guarda). */
   onFavicons(cb: (favicons: Record<string, string>) => void): void;

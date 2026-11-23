@@ -106,6 +106,16 @@ export function SettingsPage() {
         <p className="muted">Callisto te pregunta antes de guardar cada archivo. Con «Guardar como…» podés elegir otra carpeta en ese momento.</p>
       </section>
 
+      <section className="card" aria-labelledby="s-passwords">
+        <h2 id="s-passwords">Contraseñas</h2>
+        <div className="row">
+          <span className="muted">Mirá, editá o eliminá las contraseñas guardadas, y elegí si Callisto ofrece guardarlas.</span>
+          <button className="btn" data-testid="settings-passwords" onClick={() => api.openPage('passwords')}>
+            Administrar contraseñas
+          </button>
+        </div>
+      </section>
+
       <section className="card" aria-labelledby="s-perms">
         <h2 id="s-perms">Permisos de sitios</h2>
         {snap.permissions.length === 0 ? (

@@ -67,6 +67,10 @@ const DOWNLOAD_LAB = `
   <a id="m-blank" href="/dl/attach?name=pestana.bin&size=1000" target="_blank">target=_blank</a>
   <img id="img" src="/dl/image.png" width="20" height="20">`;
 
+/** Formulario de inicio de sesión de las pruebas de contraseñas. */
+const LOGIN_FIELDS = `<input id="user" name="user" autocomplete="username"><input id="pass" name="pass" type="password" autocomplete="current-password"><button id="enter" type="submit">Entrar</button>`;
+const LOGIN_FORM = `<form id="login" method="post" action="/login-post">${LOGIN_FIELDS}</form>`;
+
 const PNG_RED = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 export async function startServer(): Promise<TestServer> {
@@ -87,6 +91,35 @@ export async function startServer(): Promise<TestServer> {
           <input id="field" value="texto de prueba">`));
       case '/':
         return html(page('Inicio'));
+      // ---- contraseñas (V0.9)
+      case '/login':
+        return html(page('Iniciar sesión', LOGIN_FORM));
+      case '/login-post': {
+        // "mala" es la contraseña incorrecta: vuelve el formulario (inicio de sesión fallido)
+        let body = '';
+        req.on('data', (d) => (body += d));
+        req.on('end', () => {
+          const pass = new URLSearchParams(body).get('pass');
+          if (pass === 'mala') return html(page('Iniciar sesión', `<p id="error">Contraseña incorrecta</p>${LOGIN_FORM}`));
+          res.writeHead(303, { Location: '/welcome' });
+          res.end();
+        });
+        return;
+      }
+      case '/welcome':
+        return html(page('Bienvenida', '<p id="ok">Sesión iniciada</p>'));
+      case '/spa-login':
+        // Aplicación que no recarga: al enviar, el formulario desaparece
+        return html(page('Aplicación', `<div id="app"><form id="login" onsubmit="event.preventDefault(); setTimeout(() => { document.getElementById('app').innerHTML = '<p id=ok>Hola</p>'; }, 100)">${LOGIN_FIELDS}</form></div>`));
+      case '/two-step':
+        return html(page('Paso 1', '<form method="get" action="/two-step-2"><input id="email" name="email" type="email"><button id="next" type="submit">Siguiente</button></form>'));
+      case '/two-step-2':
+        return html(page('Paso 2', '<form method="post" action="/login-post"><input id="pass" name="pass" type="password"><button id="enter" type="submit">Entrar</button></form>'));
+      case '/iframe-login': {
+        // El mismo formulario, dentro de un iframe de otro sitio (localhost en vez de 127.0.0.1)
+        const other = `http://localhost:${(server.address() as { port: number }).port}/login`;
+        return html(page('Con iframe', `<iframe id="frame" src="${other}" width="600" height="260"></iframe>`));
+      }
       case '/page2':
         return html(page('Página 2'));
       case '/datos/guardar': {
@@ -220,17 +253,20 @@ export interface Callisto {
   close(): Promise<void>;
 }
 
-const isUi = (p: Page) => p.url().startsWith('callisto://ui/');
+/** Vistas de la interfaz de Callisto (la barra de cada ventana y el menú de sugerencias de contraseñas). */
+const isChrome = (p: Page) => p.url().startsWith('callisto://ui/');
+/** La interfaz de una ventana (no el menú de sugerencias). */
+const isUi = (p: Page) => isChrome(p) && !p.url().includes('/autofill.html');
 
 /** Interfaz y pestaña de la primera ventana (se crean en ese orden). */
 async function firstWindowPages(app: ElectronApplication): Promise<{ ui: Page; tab: Page }> {
-  await expectEventually(() => app.windows().some(isUi) && app.windows().some((p) => !isUi(p)));
-  return { ui: app.windows().find(isUi)!, tab: app.windows().find((p) => !isUi(p))! };
+  await expectEventually(() => app.windows().some(isUi) && app.windows().some((p) => !isChrome(p)));
+  return { ui: app.windows().find(isUi)!, tab: app.windows().find((p) => !isChrome(p))! };
 }
 
 /** Páginas web (no interfaz) cuya URL cumple la condición. */
 export function webPages(app: ElectronApplication, match: (url: string) => boolean): Page[] {
-  return app.windows().filter((p) => !isUi(p) && match(p.url()));
+  return app.windows().filter((p) => !isChrome(p) && match(p.url()));
 }
 
 /** Cantidad de ventanas de Callisto abiertas. */
@@ -246,13 +282,13 @@ export async function expectEventually(cond: () => Promise<boolean> | boolean, t
   }
 }
 
-export async function launchCallisto(extraArgs: string[] = [], userData?: string): Promise<Callisto> {
+export async function launchCallisto(extraArgs: string[] = [], userData?: string, extraEnv: Record<string, string> = {}): Promise<Callisto> {
   const dir = userData ?? mkdtempSync(join(tmpdir(), 'callisto-e2e-'));
   const app = await electron.launch({
     args: [ROOT, ...extraArgs],
     cwd: ROOT,
     // Ventanas invisibles y sin robar el foco (CALLISTO_TEST_VISIBLE=1 para verlas mientras se depura)
-    env: { ...process.env, CALLISTO_USER_DATA_DIR: dir, ELECTRON_RENDERER_URL: '', CALLISTO_TEST_INVISIBLE: process.env.CALLISTO_TEST_VISIBLE ? '' : '1' },
+    env: { ...process.env, CALLISTO_USER_DATA_DIR: dir, ELECTRON_RENDERER_URL: '', CALLISTO_TEST_INVISIBLE: process.env.CALLISTO_TEST_VISIBLE ? '' : '1', ...extraEnv },
   });
   const proc = app.process(); // referencia propia: Playwright ya no la da si la app salió sola
   const output: string[] = [];

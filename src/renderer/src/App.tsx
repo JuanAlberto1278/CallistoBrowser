@@ -9,6 +9,7 @@ import { FindBar } from './FindBar';
 import { TabStrip } from './TabStrip';
 import { DownloadsButton, DownloadsFlyout } from './Downloads';
 import { NewTabPage } from './NewTabPage';
+import { PasswordOfferBubble } from './PasswordOffer';
 import { BackIcon, CloseIcon, ForwardIcon, MaskIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
 
 /** Botón de perfil: inicial con el color del perfil, o "Privada" en una ventana privada. */
@@ -83,6 +84,7 @@ export function App() {
   const reportDownloads = useCallback((bottom: number) => setOverlays((o) => (o.downloads === bottom ? o : { ...o, downloads: bottom })), []);
   const reportGroup = useCallback((bottom: number) => setOverlays((o) => (o.group === bottom ? o : { ...o, group: bottom })), []);
   const reportBookmarks = useCallback((bottom: number) => setOverlays((o) => (o.bookmarks === bottom ? o : { ...o, bookmarks: bottom })), []);
+  const reportPassword = useCallback((bottom: number) => setOverlays((o) => (o.password === bottom ? o : { ...o, password: bottom })), []);
 
   useEffect(() => {
     api.onState(setState);
@@ -183,6 +185,9 @@ export function App() {
           top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4 + (bookmarks.editor.anchor === 'bar' && bookmarks.barVisible ? BOOKMARKS_BAR_HEIGHT : 0)}
           onBottom={reportBookmarks}
         />
+      )}
+      {tab?.passwordOffer && !bookmarks?.editor && (
+        <PasswordOfferBubble key={tab.passwordOffer.id} offer={tab.passwordOffer} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportPassword} />
       )}
       {downloads && <DownloadsFlyout state={downloads} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportDownloads} />}
     </div>

@@ -117,6 +117,35 @@ export const MIGRATIONS: Migration[] = [
         (2, NULL, 'folder', 'Otros favoritos', 1, 0);
     `,
   },
+  {
+    version: 4,
+    sql: `
+      -- Contraseñas (V0.9). El usuario y el sitio quedan legibles (para buscar y sugerir); la contraseña, cifrada con
+      -- AES-256-GCM (formato en password-vault.ts). Nunca hay contraseñas en texto plano en la base.
+      CREATE TABLE logins (
+        id INTEGER PRIMARY KEY,
+        origin TEXT NOT NULL,
+        username TEXT NOT NULL DEFAULT '',
+        password BLOB NOT NULL,
+        created INTEGER NOT NULL,
+        updated INTEGER NOT NULL,
+        last_used INTEGER,
+        times_used INTEGER NOT NULL DEFAULT 0,
+        UNIQUE (origin, username)
+      );
+      -- Sitios donde el usuario eligió "Nunca guardar"
+      CREATE TABLE password_blocklist (
+        origin TEXT PRIMARY KEY,
+        created INTEGER NOT NULL
+      );
+      -- Clave de datos del perfil (256 bits), envuelta con DPAPI (safeStorage): sin la cuenta de Windows no sirve
+      CREATE TABLE password_key (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        wrapped BLOB NOT NULL,
+        created INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 export function migrate(db: DatabaseSync, migrations: Migration[] = MIGRATIONS): number {

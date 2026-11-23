@@ -17,9 +17,11 @@ export interface Settings {
   downloadDir: string | null;
   /** Barra de favoritos: siempre, nunca o solo en las pestañas nuevas (como en Edge). */
   bookmarksBar: 'always' | 'never' | 'newtab';
+  /** Ofrecer guardar las contraseñas que se escriben en los sitios. */
+  offerPasswords: boolean;
 }
 
-export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always' };
+export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always', offerPasswords: true };
 
 /** Ruta absoluta de Windows (C:\… o \\servidor\…). */
 const ABSOLUTE_WIN_PATH = /^([a-zA-Z]:\\|\\\\[^\\]+\\)/;
@@ -32,5 +34,6 @@ export function sanitizeSettings(raw: unknown): Settings {
     startup: r.startup === 'restore' || r.startup === 'newtab' ? r.startup : DEFAULT_SETTINGS.startup,
     downloadDir: typeof r.downloadDir === 'string' && r.downloadDir.length < 1024 && ABSOLUTE_WIN_PATH.test(r.downloadDir) ? r.downloadDir : null,
     bookmarksBar: r.bookmarksBar === 'always' || r.bookmarksBar === 'never' || r.bookmarksBar === 'newtab' ? r.bookmarksBar : DEFAULT_SETTINGS.bookmarksBar,
+    offerPasswords: typeof r.offerPasswords === 'boolean' ? r.offerPasswords : DEFAULT_SETTINGS.offerPasswords,
   };
 }

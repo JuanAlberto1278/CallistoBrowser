@@ -243,3 +243,31 @@ td:last-child, th:last-child { text-align: right; }
 .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
 .swatch.selected { border-color: var(--fg); box-shadow: 0 0 0 2px var(--surface) inset; }
 .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------------------------------------------------------------- contraseñas */
+
+.pw-list { padding: 16px 0 4px; }
+.pw-list h2 { padding: 0 20px; }
+.pw-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 12px 6px 20px;
+  border-top: 1px solid var(--border);
+}
+.pw-row:hover .pw-actions, .pw-row:focus-within .pw-actions, .pw-actions.visible { opacity: 1; }
+.pw-site { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pw-icon { width: 16px; height: 16px; display: grid; place-items: center; color: var(--muted); flex-shrink: 0; }
+.pw-host, .pw-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pw-secret { color: var(--muted); letter-spacing: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pw-secret.revealed { color: var(--fg); letter-spacing: normal; font-family: Consolas, "Cascadia Mono", monospace; user-select: text; }
+.pw-actions { display: flex; align-items: center; gap: 4px; justify-content: flex-end; opacity: 0.35; }
+.pw-actions .btn { height: 28px; }
+.pw-editing input { height: 30px; min-width: 0; padding: 0 8px; border-radius: 6px; border: 1px solid var(--field-border); background: var(--surface); }
+.pw-error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 12px; }
+.pw-list .empty { padding: 24px 0; margin: 0; }
+.pw-banner { border-color: var(--danger); color: var(--danger); }
+.pw-note { margin-top: 8px; }
+.pw-toast { min-height: 20px; color: var(--muted); }

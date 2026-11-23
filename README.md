@@ -2,7 +2,7 @@
 
 Navegador web de escritorio para Windows, basado en Electron (Chromium).
 
-**Versión actual: V0.8, grupos de pestañas.** Grupos con nombre y color que se contraen, se arrastran y se guardan, sobre V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
+**Versión actual: V0.9, contraseñas.** Guardar, autocompletar y administrar contraseñas cifradas por perfil, con Windows Hello para verlas, sobre V0.8 (grupos de pestañas), V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
 
 ## Comandos
 
@@ -23,5 +23,6 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 - [06 — V0.6: favoritos](docs/06-v0.6-favoritos.md)
 - [07 — V0.7: perfiles y ventanas privadas](docs/07-v0.7-perfiles-y-privado.md)
 - [08 — V0.8: grupos de pestañas](docs/08-v0.8-grupos-de-pestanas.md)
+- [09 — V0.9: contraseñas (incluye el documento de seguridad)](docs/09-v0.9-contrasenas.md)
 
 Las pruebas de concepto de V0.1 están en [`spikes/`](spikes/README.md), un proyecto separado.

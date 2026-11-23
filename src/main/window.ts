@@ -1,7 +1,8 @@
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { app, BaseWindow, clipboard, dialog, Menu, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
 import { Tab, type TabKind } from './tab';
 import { showWindow } from './test-mode';
+import { AutofillPopup } from './autofill-popup';
 import type { Profile } from './profile';
 import { matchShortcut, type ShortcutAction } from './shortcuts';
 import type { ClosedTabs, TabSnapshot } from './closed-tabs';
@@ -147,6 +148,8 @@ export class BrowserWindowController {
   /** Grupos de pestañas de la ventana. */
   private readonly groups = new Map<number, TabGroupState>();
   private groupEditorId: number | null = null;
+  /** Menú de sugerencias de contraseñas (debajo del campo enfocado de la página). */
+  readonly autofill: AutofillPopup;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
     this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
@@ -169,6 +172,12 @@ export class BrowserWindowController {
     this.ui.setBackgroundColor('#00000000');
     this.uiContents = this.ui.webContents;
     this.win.contentView.addChildView(this.ui);
+    this.autofill = new AutofillPopup(this.win, {
+      session: ctx.uiSession,
+      url: new URL('autofill.html', ctx.uiUrl).href,
+      preload: join(dirname(ctx.uiPreload), 'autofill.js'),
+      onManage: () => this.openInternalPage('passwords'),
+    });
 
     // La interfaz nunca navega ni abre ventanas.
     this.uiContents.on('will-navigate', (e) => e.preventDefault());
@@ -177,6 +186,7 @@ export class BrowserWindowController {
     this.uiContents.on('context-menu', (_e, params) => { void this.showUiMenu(params); });
 
     this.win.on('resize', () => {
+      this.autofill.hide();
       this.layout();
       this.ctx.session.markDirty();
     });
@@ -198,6 +208,7 @@ export class BrowserWindowController {
     this.win.on('closed', () => {
       this.closing = true;
       BrowserWindowController.all.delete(this);
+      this.autofill.destroy();
       for (const tab of this.tabs) {
         this.attached.get(tab)?.dispose();
         tab.destroy();
@@ -295,6 +306,8 @@ export class BrowserWindowController {
   navigateTab(tab: Tab, input: string, typed = true): boolean {
     const resolved = resolveInput(input, this.ctx.profile.searchTemplate);
     if (!resolved) return false;
+    // El usuario se va a otra parte: la oferta de guardar una contraseña ya no corresponde
+    if (tab.passwordOffer) tab.setPasswordOffer(null);
     this.openResolved(tab, resolved, typed);
     return true;
   }
@@ -377,6 +390,7 @@ export class BrowserWindowController {
     if (g?.collapsed) g.collapsed = false;
     const previous = this.activeTab;
     this.activeTab = tab;
+    if (this.autofill.openFor && this.autofill.openFor !== tab) this.autofill.hide();
     if (previous && previous !== tab && this.tabs.includes(previous)) previous.view.setVisible(false);
     tab.ensureLoaded(); // pestaña restaurada: se carga recién ahora
     tab.view.setVisible(true);
@@ -1149,6 +1163,7 @@ export class BrowserWindowController {
           newPrivateWindow: () => { this.ctx.profiles.openPrivateWindow(this.ctx); },
           history: () => this.openInternalPage('history'),
           downloads: () => this.openInternalPage('downloads'),
+          passwords: () => this.openInternalPage('passwords'),
           zoom: (d) => this.activeTab.zoom(d),
           find: () => this.openFind(),
           settings: () => this.openInternalPage('settings'),

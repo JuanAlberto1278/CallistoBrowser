@@ -41,6 +41,19 @@ const api: CallistoInternalApi = {
     remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.profilesRemove, String(id)),
     open: (id) => ipcRenderer.send(INTERNAL_IPC.profilesOpen, String(id)),
   },
+  passwords: {
+    list: (query) => ipcRenderer.invoke(INTERNAL_IPC.passwordsList, query === undefined ? undefined : String(query)),
+    reveal: (id) => ipcRenderer.invoke(INTERNAL_IPC.passwordsReveal, Number(id)),
+    copy: (id) => ipcRenderer.invoke(INTERNAL_IPC.passwordsCopy, Number(id)),
+    update: (id, patch) =>
+      ipcRenderer.invoke(INTERNAL_IPC.passwordsUpdate, Number(id), {
+        username: patch.username === undefined ? undefined : String(patch.username),
+        password: patch.password === undefined ? undefined : String(patch.password),
+      }),
+    remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.passwordsRemove, Number(id)),
+    unblock: (origin) => ipcRenderer.invoke(INTERNAL_IPC.passwordsUnblock, String(origin)),
+    setOfferToSave: (on) => ipcRenderer.invoke(INTERNAL_IPC.passwordsSetOffer, on === true),
+  },
   openPage: (page) => ipcRenderer.send(INTERNAL_IPC.openPage, String(page)),
 };
 

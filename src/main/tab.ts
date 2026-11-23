@@ -11,6 +11,7 @@ import { errorPageScript } from './error-page';
 import type { TabSnapshot } from './closed-tabs';
 import type { SavedTab } from './session-store';
 import { permissionPhrase } from './permissions';
+import type { PasswordOffer } from '../shared/passwords';
 
 /**
  * Lo asigna la ventana dueña: crea la pestaña (o la ventana) que alojará el contenido que abre la página
@@ -52,7 +53,18 @@ type TabEvents = {
   'zoom-changed': [];
   /** Hay un favicon nuevo para mostrar (clave + imagen como URL data:). */
   favicon: [string, string];
+  /** El frame principal cargó un documento nuevo (para las contraseñas: ¿el inicio de sesión funcionó?). */
+  navigated: [];
 };
+
+/** Inicio de sesión enviado, a la espera de saber si funcionó (ver passwords.ts). La contraseña, solo en memoria. */
+export interface PendingLogin {
+  origin: string;
+  username: string;
+  password: string;
+  at: number;
+  navigated: boolean;
+}
 
 let nextTabId = 1;
 let nextPromptId = 1;
@@ -80,6 +92,10 @@ export class Tab extends EventEmitter<TabEvents> {
   readonly newTabPage: boolean;
   /** Grupo de pestañas al que pertenece (lo administra la ventana). */
   groupId: number | null = null;
+  /** Contraseñas (los administra passwords.ts): lo enviado, el usuario de un primer paso y la oferta de guardar. */
+  pendingLogin: PendingLogin | null = null;
+  usernameCandidate: { origin: string; username: string; at: number } | null = null;
+  private passwordOfferValue: { offer: PasswordOffer; password: string; loginId: number | null } | null = null;
 
   private pending: SavedTab | null;
   private failed: FailedLoad | null = null;
@@ -170,6 +186,7 @@ export class Tab extends EventEmitter<TabEvents> {
       if (responded && transition !== 'reload' && transition !== 'history') this.record(url, transition === 'typed');
       else this.lastRecordedUrl = url;
       changed();
+      this.emit('navigated');
     });
     wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
       // Navegación dentro de la página (aplicaciones web): cuenta como visita si cambia algo más que el ancla (#)
@@ -331,7 +348,18 @@ export class Tab extends EventEmitter<TabEvents> {
       newTabPage: this.showsNewTabPage,
       groupId: this.groupId,
       permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
+      passwordOffer: this.passwordOfferValue?.offer ?? null,
     };
+  }
+
+  /** Oferta de guardar una contraseña (la contraseña queda en el proceso principal; a la interfaz va sin ella). */
+  get passwordOffer(): { offer: PasswordOffer; password: string; loginId: number | null } | null {
+    return this.passwordOfferValue;
+  }
+
+  setPasswordOffer(value: { offer: PasswordOffer; password: string; loginId: number | null } | null): void {
+    this.passwordOfferValue = value;
+    this.queueState();
   }
 
   /** ¿Restaurada pero todavía sin cargar? */

@@ -49,6 +49,7 @@ const api: CallistoUiApi = {
     }),
   groupAction: (id, action) => ipcRenderer.send(IPC.groupAction, Number(id), String(action)),
   moveGroup: (id, index) => ipcRenderer.send(IPC.moveGroup, Number(id), Number(index)),
+  answerPasswordOffer: (id, answer, username) => ipcRenderer.send(IPC.answerPasswordOffer, Number(id), String(answer), username === undefined ? undefined : String(username)),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
   },

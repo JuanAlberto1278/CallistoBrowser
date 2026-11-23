@@ -1,4 +1,7 @@
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { clipboard, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import { verifyUser } from './os-auth';
+import { VaultError } from './password-vault';
+import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, hostOf as loginHost, isLoginOrigin } from '../shared/passwords';
 import { BrowserWindowController } from './window';
 import { Tab } from './tab';
 import { buildSuggestions } from './suggestions';
@@ -10,11 +13,12 @@ import { BookmarkError } from './bookmark-store';
 import type { ProfileManager } from './profiles';
 import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
 import type { ProfilesSnapshot } from '../shared/internal-api';
-import { INTERNAL_IPC, type ClearPeriod, type HistoryEntry, type SettingsSnapshot } from '../shared/internal-api';
+import { INTERNAL_IPC, type ClearPeriod, type HistoryEntry, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
 import { SEARCH_ENGINES, type SearchEngineId } from '../shared/settings';
 import { zoomPercent } from '../shared/zoom';
+import { answerPasswordOffer } from './passwords';
 
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
@@ -80,6 +84,12 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   ipcMain.on(IPC.moveGroup, (e, id: unknown, index: unknown) => {
     const c = from(e);
     if (c && isId(id) && typeof index === 'number' && Number.isSafeInteger(index)) c.moveGroup(id, index);
+  });
+  ipcMain.on(IPC.answerPasswordOffer, (e, id: unknown, answer: unknown, username: unknown) => {
+    const c = from(e);
+    if (!c || !isId(id) || (answer !== 'save' && answer !== 'never' && answer !== 'dismiss')) return;
+    const tab = c.tabs.find((t) => t.passwordOffer?.offer.id === id);
+    if (tab) void answerPasswordOffer(tab, id, answer, typeof username === 'string' ? username : undefined);
   });
   ipcMain.on(IPC.tabMenu, (e, id: unknown) => {
     const c = from(e);
@@ -405,8 +415,105 @@ function registerInternalIpc(): void {
   ipcMain.on(INTERNAL_IPC.openPage, (e, page: unknown) => {
     const tab = Tab.fromWebContents(e.sender);
     if (!tab || tab.kind !== 'internal' || !internalPageOf(e.senderFrame?.url ?? '')) return;
-    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks' && page !== 'profiles') return;
+    if (page !== 'history' && page !== 'settings' && page !== 'downloads' && page !== 'bookmarks' && page !== 'profiles' && page !== 'passwords') return;
     BrowserWindowController.ofTab(tab)?.navigateTab(tab, `callisto://${page}`, false);
+  });
+
+  registerPasswordsPageIpc();
+}
+
+// ---------------------------------------------------------------- callisto://passwords
+
+/** Cuánto vale una verificación de identidad (como en Chrome): ver otra contraseña enseguida no la vuelve a pedir. */
+const PASSWORD_AUTH_WINDOW = 60_000;
+
+type InternalContext = NonNullable<ReturnType<typeof fromInternal>>;
+
+/** Pide a Windows que verifique la identidad (Windows Hello o la contraseña de la cuenta), salvo que sea reciente. */
+async function authorizePasswords(ctx: InternalContext): Promise<PasswordResult | null> {
+  const root = ctx.profile.parent ?? ctx.profile;
+  if (Date.now() < root.passwordsAuthorizedUntil) return null;
+  const result = await verifyUser(ctx.win.win, 'Verificá tu identidad para ver o editar las contraseñas guardadas en Callisto.');
+  if (result === 'verified') {
+    root.passwordsAuthorizedUntil = Date.now() + PASSWORD_AUTH_WINDOW;
+    return null;
+  }
+  return result === 'rejected' ? NOT_VERIFIED : HELLO_FAILED;
+}
+
+const NOT_VERIFIED: PasswordResult = { error: 'No se verificó tu identidad.' };
+const HELLO_FAILED: PasswordResult = { error: 'Windows no pudo verificar tu identidad (no respondió Windows Hello ni el cuadro de contraseña).' };
+const vaultError = (e: unknown): PasswordResult => ({ error: e instanceof VaultError ? e.message : 'No se pudo completar la operación.' });
+
+function registerPasswordsPageIpc(): void {
+  const ctxOf = (e: IpcMainInvokeEvent) => fromInternal(e, 'passwords') ?? denied();
+
+  ipcMain.handle(INTERNAL_IPC.passwordsList, async (e, query: unknown): Promise<PasswordsSnapshot> => {
+    const ctx = ctxOf(e);
+    const vault = ctx.profile.passwords;
+    const status = await vault.open();
+    const q = typeof query === 'string' ? query.slice(0, 200) : '';
+    return {
+      status,
+      entries: vault.list(q).map((l) => {
+        const iconUrl = ctx.profile.history.iconUrlFor(`${l.origin}/`);
+        return { ...l, host: loginHost(l.origin), icon: iconUrl ? (ctx.profile.favicons.cached(iconUrl) ?? null) : null };
+      }),
+      blocked: vault.blocked(),
+      offerToSave: ctx.profile.settings.offerPasswords,
+      isPrivate: ctx.profile.isPrivate,
+    };
+  });
+  ipcMain.handle(INTERNAL_IPC.passwordsReveal, async (e, id: unknown): Promise<PasswordResult> => {
+    const ctx = ctxOf(e);
+    if (!isId(id) || !ctx.profile.passwords.get(id)) return { error: 'La contraseña ya no existe.' };
+    const denial = await authorizePasswords(ctx);
+    if (denial) return denial;
+    try {
+      return { password: await ctx.profile.passwords.password(id) };
+    } catch (err) {
+      return vaultError(err);
+    }
+  });
+  ipcMain.handle(INTERNAL_IPC.passwordsCopy, async (e, id: unknown): Promise<PasswordResult> => {
+    const ctx = ctxOf(e);
+    if (!isId(id) || !ctx.profile.passwords.get(id)) return { error: 'La contraseña ya no existe.' };
+    const denial = await authorizePasswords(ctx);
+    if (denial) return denial;
+    try {
+      clipboard.writeText(await ctx.profile.passwords.password(id));
+      return {};
+    } catch (err) {
+      return vaultError(err);
+    }
+  });
+  ipcMain.handle(INTERNAL_IPC.passwordsUpdate, async (e, id: unknown, patch: unknown): Promise<PasswordResult> => {
+    const ctx = ctxOf(e);
+    if (!isId(id) || !isObj(patch) || !ctx.profile.passwords.get(id)) return { error: 'La contraseña ya no existe.' };
+    const username = typeof patch.username === 'string' ? patch.username.trim() : undefined;
+    const password = typeof patch.password === 'string' ? patch.password : undefined;
+    if ((username !== undefined && username.length > MAX_USERNAME_LENGTH) || (password !== undefined && password.length > MAX_PASSWORD_LENGTH)) return { error: 'Es demasiado largo.' };
+    if (password !== undefined && !password) return { error: 'La contraseña no puede estar vacía.' };
+    const denial = await authorizePasswords(ctx);
+    if (denial) return denial;
+    try {
+      await ctx.profile.passwords.update(id, { username, password });
+      return {};
+    } catch (err) {
+      return vaultError(err);
+    }
+  });
+  ipcMain.handle(INTERNAL_IPC.passwordsRemove, (e, id: unknown) => {
+    const ctx = ctxOf(e);
+    if (isId(id)) ctx.profile.passwords.remove(id);
+  });
+  ipcMain.handle(INTERNAL_IPC.passwordsUnblock, (e, origin: unknown) => {
+    const ctx = ctxOf(e);
+    if (isLoginOrigin(origin)) ctx.profile.passwords.unblock(origin);
+  });
+  ipcMain.handle(INTERNAL_IPC.passwordsSetOffer, (e, on: unknown) => {
+    const ctx = ctxOf(e);
+    ctx.profile.updateSettings({ offerPasswords: on === true });
   });
 }
 

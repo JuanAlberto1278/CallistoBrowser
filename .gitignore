@@ -7,3 +7,4 @@ playwright-report/
 spikes/node_modules/
 spikes/.runtime/
 *.log
+build-native/

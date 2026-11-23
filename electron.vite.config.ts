@@ -14,7 +14,8 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        // Los preloads en sandbox deben ser CommonJS de un solo archivo
+        // Los preloads en sandbox deben ser CommonJS de un solo archivo: ningún módulo con código puede ser compartido por
+        // dos preloads (iría a un archivo aparte que el preload no puede cargar). Lo comprueban las pruebas e2e.
         output: { format: 'cjs', entryFileNames: '[name].js' },
         input: {
           // Interfaz del navegador (privilegiada, expone una API mínima)
@@ -23,6 +24,8 @@ export default defineConfig({
           'web-content': resolve(__dirname, 'src/preload/web-content.ts'),
           // Páginas internas (historial, configuración): API acotada a cada página
           internal: resolve(__dirname, 'src/preload/internal.ts'),
+          // Menú de sugerencias de contraseñas (vista propia de la interfaz)
+          autofill: resolve(__dirname, 'src/preload/autofill.ts'),
         },
       },
     },
@@ -43,6 +46,9 @@ export default defineConfig({
           downloads: resolve(__dirname, 'src/renderer/downloads.html'),
           bookmarks: resolve(__dirname, 'src/renderer/bookmarks.html'),
           profiles: resolve(__dirname, 'src/renderer/profiles.html'),
+          passwords: resolve(__dirname, 'src/renderer/passwords.html'),
+          // Menú de sugerencias de contraseñas (callisto://ui/autofill.html)
+          autofill: resolve(__dirname, 'src/renderer/autofill.html'),
         },
       },
     },

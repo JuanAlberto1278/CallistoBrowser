@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { session, type Session, type WebContents } from 'electron';
+import { safeStorage, session, type Session, type WebContents } from 'electron';
+import { PasswordVault, type KeyWrapper } from './password-vault';
 import { FaviconLoader } from './favicon';
 import { openDatabase, openMemoryDatabase } from './db';
 import { HistoryStore } from './history-store';
@@ -12,6 +13,16 @@ import { DownloadStore } from './download-store';
 import { DownloadManager } from './downloads';
 import { BookmarkStore } from './bookmark-store';
 import type { ProfileColor } from '../shared/profiles';
+
+/** Clave de la bóveda de contraseñas protegida con DPAPI (la cuenta de Windows), vía safeStorage. */
+const dpapiKeyWrapper: KeyWrapper = {
+  available: () => safeStorage.isAsyncEncryptionAvailable(),
+  wrap: (secret) => safeStorage.encryptStringAsync(secret),
+  unwrap: async (wrapped) => {
+    const r = await safeStorage.decryptStringAsync(wrapped);
+    return { secret: r.result, rewrap: r.shouldReEncrypt };
+  },
+};
 
 /** Pedido de permiso que necesita la decisión del usuario. */
 export interface PermissionRequest {
@@ -68,6 +79,10 @@ export class Profile extends EventEmitter<ProfileEvents> {
   readonly internal: InternalPages;
   readonly downloads: DownloadManager;
   readonly bookmarks: BookmarkStore;
+  /** Contraseñas. Una ventana privada usa (solo para autocompletar) las del perfil de origen y no guarda nuevas. */
+  readonly passwords: PasswordVault;
+  /** Hasta cuándo vale la última verificación de identidad (Windows Hello) para ver o editar contraseñas. */
+  passwordsAuthorizedUntil = 0;
   readonly defaultDownloadDir: string;
   /** Los perfiles privados no guardan historial. */
   readonly recordsHistory: boolean;
@@ -101,6 +116,7 @@ export class Profile extends EventEmitter<ProfileEvents> {
     this.kv = new KeyValueStore(this.db);
     // Los favoritos de una ventana privada son los del perfil de origen (como en Chrome)
     this.bookmarks = priv ? priv.parent.bookmarks : new BookmarkStore(this.db);
+    this.passwords = priv ? priv.parent.passwords : new PasswordVault(this.db, dpapiKeyWrapper);
     this.settingsValue = sanitizeSettings(this.kv.get('settings') ?? DEFAULT_SETTINGS);
     this.internal = opts.internal;
 

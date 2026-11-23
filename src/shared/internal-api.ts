@@ -6,6 +6,7 @@ import type { DownloadEntry } from './downloads';
 import type { BookmarkNode, FolderOption } from './bookmarks';
 import type { ProfileColor } from './profiles';
 import type { SearchEngineId, Settings } from './settings';
+import type { LoginSummary, VaultStatus } from './passwords';
 
 export interface HistoryEntry {
   id: number;
@@ -65,7 +66,36 @@ export const INTERNAL_IPC = {
   profilesUpdate: 'callisto-internal:profiles-update',
   profilesRemove: 'callisto-internal:profiles-remove',
   profilesOpen: 'callisto-internal:profiles-open',
+  passwordsList: 'callisto-internal:passwords-list',
+  passwordsReveal: 'callisto-internal:passwords-reveal',
+  passwordsCopy: 'callisto-internal:passwords-copy',
+  passwordsUpdate: 'callisto-internal:passwords-update',
+  passwordsRemove: 'callisto-internal:passwords-remove',
+  passwordsUnblock: 'callisto-internal:passwords-unblock',
+  passwordsSetOffer: 'callisto-internal:passwords-set-offer',
 } as const;
+
+export interface PasswordEntry extends LoginSummary {
+  host: string;
+  /** Favicon del sitio como URL data:, si se conoce. */
+  icon: string | null;
+}
+
+export interface PasswordsSnapshot {
+  status: VaultStatus;
+  entries: PasswordEntry[];
+  /** Sitios donde el usuario eligió "Nunca guardar". */
+  blocked: string[];
+  offerToSave: boolean;
+  /** Ventana privada: se muestran las del perfil de origen; no se guardan nuevas. */
+  isPrivate: boolean;
+}
+
+/** Resultado de lo que requiere verificar la identidad: `error` = cancelado, rechazado o no se pudo. */
+export interface PasswordResult {
+  password?: string;
+  error?: string;
+}
 
 export interface ProfilesSnapshot {
   profiles: Array<{ id: string; name: string; color: ProfileColor; windows: number; current: boolean }>;
@@ -117,6 +147,18 @@ export interface CallistoInternalApi {
     remove(id: string): Promise<{ error?: string; cancelled?: boolean }>;
     open(id: string): void;
   };
+  passwords: {
+    list(query?: string): Promise<PasswordsSnapshot>;
+    /** Muestra una contraseña (Windows verifica la identidad antes). */
+    reveal(id: number): Promise<PasswordResult>;
+    /** Copia una contraseña al portapapeles (Windows verifica la identidad antes). */
+    copy(id: number): Promise<PasswordResult>;
+    /** Cambia usuario y/o contraseña (Windows verifica la identidad antes). */
+    update(id: number, patch: { username?: string; password?: string }): Promise<PasswordResult>;
+    remove(id: number): Promise<void>;
+    unblock(origin: string): Promise<void>;
+    setOfferToSave(on: boolean): Promise<void>;
+  };
   /** Abre otra página interna (p. ej. el historial desde la configuración) en esta pestaña. */
-  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks' | 'profiles'): void;
+  openPage(page: 'history' | 'settings' | 'downloads' | 'bookmarks' | 'profiles' | 'passwords'): void;
 }

@@ -1,0 +1,44 @@
+/* Menú de sugerencias de contraseñas. El margen transparente (AUTOFILL_MARGIN = 6px) deja lugar para la sombra. */
+.autofill {
+  position: absolute;
+  inset: 6px;
+  display: flex;
+  flex-direction: column;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.autofill ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+.autofill li {
+  height: 44px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: default;
+}
+.autofill li[data-selected="true"] { background: var(--hover); }
+.autofill-icon { display: inline-flex; color: var(--muted); }
+.autofill-text { display: flex; flex-direction: column; min-width: 0; }
+.autofill-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.autofill-pass { color: var(--muted); font-size: 11px; letter-spacing: 1px; }
+.autofill-manage {
+  height: 36px;
+  flex-shrink: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--focus);
+  font: inherit;
+  text-align: left;
+  padding: 0 12px;
+}
+.autofill-manage:hover { background: var(--hover); }
