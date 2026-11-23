@@ -14,7 +14,7 @@ const api: CallistoUiApi = {
   newTab: () => ipcRenderer.send(IPC.newTab),
   closeTab: (id) => ipcRenderer.send(IPC.closeTab, Number(id)),
   activateTab: (id) => ipcRenderer.send(IPC.activateTab, Number(id)),
-  moveTab: (id, index) => ipcRenderer.send(IPC.moveTab, Number(id), Number(index)),
+  moveTab: (id, index, groupId) => ipcRenderer.send(IPC.moveTab, Number(id), Number(index), groupId === undefined ? undefined : groupId === null ? null : Number(groupId)),
   showTabMenu: (id) => ipcRenderer.send(IPC.tabMenu, id === null ? null : Number(id)),
   find: (query, forward, newSession) => ipcRenderer.send(IPC.find, String(query), forward === true, newSession === true),
   closeFind: () => ipcRenderer.send(IPC.closeFind),
@@ -40,6 +40,15 @@ const api: CallistoUiApi = {
   showBookmarkOverflow: (fromIndex) => ipcRenderer.send(IPC.bookmarkOverflowMenu, Number(fromIndex)),
   moveBookmark: (id, parentId, index) => ipcRenderer.send(IPC.moveBookmark, Number(id), Number(parentId), Number(index)),
   showProfileMenu: () => ipcRenderer.send(IPC.profileMenu),
+  editGroup: (id) => ipcRenderer.send(IPC.groupEditor, id === null ? null : Number(id)),
+  updateGroup: (id, patch) =>
+    ipcRenderer.send(IPC.updateGroup, Number(id), {
+      title: patch.title === undefined ? undefined : String(patch.title),
+      color: patch.color === undefined ? undefined : String(patch.color),
+      collapsed: patch.collapsed === undefined ? undefined : patch.collapsed === true,
+    }),
+  groupAction: (id, action) => ipcRenderer.send(IPC.groupAction, Number(id), String(action)),
+  moveGroup: (id, index) => ipcRenderer.send(IPC.moveGroup, Number(id), Number(index)),
   onState: (cb) => {
     ipcRenderer.on(IPC.state, (_e, state: WindowState) => cb(state));
   },

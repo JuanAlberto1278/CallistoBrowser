@@ -78,6 +78,8 @@ export class Tab extends EventEmitter<TabEvents> {
   openHandler: OpenHandler | null = null;
   /** Abierta por el usuario como pestaña nueva (no por una página): vacía, muestra la página de nueva pestaña. */
   readonly newTabPage: boolean;
+  /** Grupo de pestañas al que pertenece (lo administra la ventana). */
+  groupId: number | null = null;
 
   private pending: SavedTab | null;
   private failed: FailedLoad | null = null;
@@ -327,6 +329,7 @@ export class Tab extends EventEmitter<TabEvents> {
       find: this.findState,
       notice: this.noticeState,
       newTabPage: this.showsNewTabPage,
+      groupId: this.groupId,
       permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
     };
   }

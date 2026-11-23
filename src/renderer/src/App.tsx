@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { PermissionPrompt, WindowState } from '../../shared/ipc';
 import { BOOKMARKS_BAR_HEIGHT, chromeHeight, NOTICE_HEIGHT, PERMISSION_BAR_HEIGHT, TAB_STRIP_HEIGHT, TOOLBAR_HEIGHT } from '../../shared/layout';
 import { BookmarkEditor, BookmarksBar } from './Bookmarks';
+import { GroupEditor } from './GroupEditor';
 import { PROFILE_COLORS, type WindowProfile } from '../../shared/profiles';
 import { AddressBar } from './AddressBar';
 import { FindBar } from './FindBar';
@@ -80,6 +81,7 @@ export function App() {
   const api = window.callisto;
   const reportSuggestions = useCallback((bottom: number) => setOverlays((o) => (o.suggestions === bottom ? o : { ...o, suggestions: bottom })), []);
   const reportDownloads = useCallback((bottom: number) => setOverlays((o) => (o.downloads === bottom ? o : { ...o, downloads: bottom })), []);
+  const reportGroup = useCallback((bottom: number) => setOverlays((o) => (o.group === bottom ? o : { ...o, group: bottom })), []);
   const reportBookmarks = useCallback((bottom: number) => setOverlays((o) => (o.bookmarks === bottom ? o : { ...o, bookmarks: bottom })), []);
 
   useEffect(() => {
@@ -113,10 +115,12 @@ export function App() {
         if (downloads?.panelOpen && !downloads.prompt) api.setDownloadsPanel(false);
         // Clic fuera del editor de favoritos: se cierra (lo recién agregado queda guardado)
         if (bookmarks?.editor) api.bookmarkEditorClose();
+        // Clic fuera del panel de un grupo: se cierra (los cambios ya se aplicaron)
+        if (state?.groupEditor != null) api.editGroup(null);
       }}
     >
       <div style={{ height: TAB_STRIP_HEIGHT }} className="tabstrip-row">
-        {state && <TabStrip tabs={state.tabs} activeId={state.activeTabId} favicons={favicons} />}
+        {state && <TabStrip tabs={state.tabs} activeId={state.activeTabId} favicons={favicons} groups={state.groups} />}
       </div>
       <div className="toolbar" role="toolbar" aria-label="Navegación" style={{ height: TOOLBAR_HEIGHT - 2 }}>
         <button className="icon-button" data-testid="back" title="Atrás (Alt+Flecha izquierda)" aria-label="Atrás" disabled={!tab?.canGoBack} onClick={() => api.goBack()}>
@@ -170,6 +174,9 @@ export function App() {
       {tab?.permission && <PermissionBar key={tab.permission.id} prompt={tab.permission} />}
       {tab?.find && <FindBar tabId={tab.id} find={tab.find} focusSignal={findSignal} focusHandled={findHandled} />}
       {tab?.newTabPage && <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} isPrivate={!!state?.profile.private} />}
+      {state?.groupEditor != null && state.groups.some((g) => g.id === state.groupEditor) && (
+        <GroupEditor group={state.groups.find((g) => g.id === state.groupEditor)!} top={TAB_STRIP_HEIGHT - 2} onBottom={reportGroup} />
+      )}
       {bookmarks?.editor && (
         <BookmarkEditor
           editor={bookmarks.editor}

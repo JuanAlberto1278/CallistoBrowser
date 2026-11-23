@@ -130,12 +130,18 @@ export function pageMenuTemplate(p: ContextMenuParams, a: PageMenuActions): Item
 export interface TabMenuInfo {
   /** null = clic derecho en la franja, fuera de una pestaña. */
   hasTab: boolean;
+  /** Grupo de la pestaña y grupos de la ventana (para "Agregar la pestaña al grupo"). */
+  groupId?: number | null;
+  groups?: Array<{ id: number; title: string; colorName: string }>;
   tabCount: number;
   tabsToRight: number;
   canReopen: boolean;
 }
 
 export interface TabMenuActions {
+  addToNewGroup?(): void;
+  addToGroup?(groupId: number): void;
+  removeFromGroup?(): void;
   newTabToRight(): void;
   newTab(): void;
   reload(): void;
@@ -152,8 +158,18 @@ export function tabMenuTemplate(info: TabMenuInfo, a: TabMenuActions): Item[] {
   if (!info.hasTab) {
     return [{ label: 'Nueva pestaña', accelerator: 'Ctrl+T', registerAccelerator: false, click: () => a.newTab() }, reopen];
   }
+  const others = (info.groups ?? []).filter((g) => g.id !== info.groupId);
+  const groupItems: Item[] = [{ label: 'Agregar la pestaña a un grupo nuevo', click: () => a.addToNewGroup?.() }];
+  if (others.length) {
+    groupItems.push({
+      label: 'Agregar la pestaña al grupo',
+      submenu: others.map((g) => ({ label: (g.title || `Grupo ${g.colorName.toLowerCase()}`).replace(/&/g, '&&'), click: () => a.addToGroup?.(g.id) })),
+    });
+  }
+  if (info.groupId != null) groupItems.push({ label: 'Quitar del grupo', click: () => a.removeFromGroup?.() });
   return tidy([
     { label: 'Nueva pestaña a la derecha', click: () => a.newTabToRight() },
+    ...groupItems,
     SEP,
     { label: 'Volver a cargar', accelerator: 'F5', registerAccelerator: false, click: () => a.reload() },
     { label: 'Duplicar', accelerator: 'Ctrl+Shift+K', registerAccelerator: false, click: () => a.duplicate() },

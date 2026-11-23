@@ -2,7 +2,7 @@
 
 Navegador web de escritorio para Windows, basado en Electron (Chromium).
 
-**Versión actual: V0.7, perfiles y ventanas privadas.** Perfiles independientes (cookies, historial, favoritos y configuración propios) y ventanas privadas efímeras, sobre V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
+**Versión actual: V0.8, grupos de pestañas.** Grupos con nombre y color que se contraen, se arrastran y se guardan, sobre V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
 
 ## Comandos
 
@@ -22,5 +22,6 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 - [05 — V0.5: descargas autorizadas y nueva pestaña](docs/05-v0.5-descargas.md)
 - [06 — V0.6: favoritos](docs/06-v0.6-favoritos.md)
 - [07 — V0.7: perfiles y ventanas privadas](docs/07-v0.7-perfiles-y-privado.md)
+- [08 — V0.8: grupos de pestañas](docs/08-v0.8-grupos-de-pestanas.md)
 
 Las pruebas de concepto de V0.1 están en [`spikes/`](spikes/README.md), un proyecto separado.

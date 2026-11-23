@@ -5,6 +5,7 @@ import type { SecurityLevel } from './url-security';
 import type { DownloadEntry, DownloadPrompt } from './downloads';
 import type { BookmarkEditorState, BookmarkNode } from './bookmarks';
 import type { WindowProfile } from './profiles';
+import type { GroupAction, GroupColor, TabGroupState } from './tab-groups';
 
 export interface Notice {
   id: number;
@@ -41,6 +42,8 @@ export interface TabState {
   permission: PermissionPrompt | null;
   /** Pestaña nueva sin contenido: la interfaz muestra la página de nueva pestaña encima. */
   newTabPage: boolean;
+  /** Grupo de la pestaña (null = sin grupo). */
+  groupId: number | null;
 }
 
 export interface DownloadsUiState {
@@ -120,6 +123,10 @@ export interface WindowState {
   searchEngine: string;
   /** Perfil de la ventana (y si es privada). */
   profile: WindowProfile;
+  /** Grupos de pestañas de la ventana. */
+  groups: TabGroupState[];
+  /** Grupo cuyo panel de edición está abierto. */
+  groupEditor: number | null;
   downloads: DownloadsUiState;
   bookmarks: BookmarksUiState;
 }
@@ -162,6 +169,10 @@ export const IPC = {
   bookmarkOverflowMenu: 'callisto:bookmark-overflow-menu',
   moveBookmark: 'callisto:move-bookmark',
   profileMenu: 'callisto:profile-menu',
+  groupEditor: 'callisto:group-editor',
+  updateGroup: 'callisto:update-group',
+  groupAction: 'callisto:group-action',
+  moveGroup: 'callisto:move-group',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
@@ -185,7 +196,8 @@ export interface CallistoUiApi {
   newTab(): void;
   closeTab(id: number): void;
   activateTab(id: number): void;
-  moveTab(id: number, index: number): void;
+  /** Mueve una pestaña; `groupId` (si se indica): el grupo al que queda (null = sin grupo). */
+  moveTab(id: number, index: number, groupId?: number | null): void;
   /** Menú contextual de una pestaña, o de la franja de pestañas si id es null. */
   showTabMenu(id: number | null): void;
   /** Busca en la pestaña activa. `newSession`: el texto cambió (empieza una búsqueda nueva). */
@@ -226,6 +238,12 @@ export interface CallistoUiApi {
   moveBookmark(id: number, parentId: number, index: number): void;
   /** Menú del botón de perfil. */
   showProfileMenu(): void;
+  /** Abre (o cierra, con null) el panel de un grupo. */
+  editGroup(id: number | null): void;
+  updateGroup(id: number, patch: { title?: string; color?: GroupColor; collapsed?: boolean }): void;
+  groupAction(id: number, action: GroupAction): void;
+  /** Mueve un grupo entero a la posición indicada. */
+  moveGroup(id: number, index: number): void;
   onState(cb: (state: WindowState) => void): void;
   /** Favicons nuevos: clave -> URL data: de la imagen (la interfaz los guarda). */
   onFavicons(cb: (favicons: Record<string, string>) => void): void;

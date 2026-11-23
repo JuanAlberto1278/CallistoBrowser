@@ -11,6 +11,7 @@ import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, 
 import { BAR_FOLDER_ID, OTHER_FOLDER_ID, isBookmarkableUrl, type BookmarkEditorState, type BookmarkNode } from '../shared/bookmarks';
 import { bookmarkItemMenu, bookmarksSubmenu, folderMenu, nodesMenu } from './bookmark-menus';
 import type { ProfileInfo, WindowProfile } from '../shared/profiles';
+import { GROUP_COLORS, groupDropIndex, isGroupColor, keepGroupsTogether, nextGroupColor, sanitizeGroupTitle, type GroupAction, type TabGroupState } from '../shared/tab-groups';
 import { sanitizeFileName, siteOf } from '../shared/downloads';
 import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
@@ -52,7 +53,9 @@ export interface WindowOptions {
   /** Pestañas ya existentes que pasan a esta ventana (abiertas por una página, movidas desde otra ventana). */
   tabs?: Tab[];
   /** Pestañas a restaurar (ventana cerrada que se reabre, o sesión anterior): se cargan al activarlas. */
-  restore?: { tabs: SavedTab[]; active: number };
+  restore?: { tabs: SavedTab[]; active: number; groups?: TabGroupState[] };
+  /** Grupos que llegan con `tabs` (mover un grupo a una ventana nueva). */
+  groups?: TabGroupState[];
   /** Posición y tamaño guardados. */
   bounds?: Rectangle;
   maximized?: boolean;
@@ -67,6 +70,7 @@ interface Attached {
 }
 
 let nextWindowId = 1;
+let nextGroupId = 1;
 
 const DEFAULT_SIZE = { width: 1280, height: 860 };
 
@@ -140,6 +144,9 @@ export class BrowserWindowController {
   private downloadsPanelOpen = false;
   /** Editor de favoritos abierto (bajo la estrella o bajo la barra). */
   private bookmarkEditor: BookmarkEditorState | null = null;
+  /** Grupos de pestañas de la ventana. */
+  private readonly groups = new Map<number, TabGroupState>();
+  private groupEditorId: number | null = null;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
     this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
@@ -206,11 +213,23 @@ export class BrowserWindowController {
     BrowserWindowController.lastFocused = this;
 
     if (opts.tabs?.length) {
+      for (const g of opts.groups ?? []) this.groups.set(g.id, { ...g });
       opts.tabs.forEach((t, i) => this.insertTab(t, i, i === 0));
     } else if (opts.restore?.tabs.length) {
+      // Grupos guardados: ids nuevos (los guardados son de otra sesión)
+      const ids = new Map<number, number>();
+      for (const g of opts.restore.groups ?? []) {
+        const id = nextGroupId++;
+        ids.set(g.id, id);
+        this.groups.set(id, { ...g, id });
+      }
       // Se agregan todas sin activar (quedan sin cargar) y después se activa, y carga, solo la que estaba activa
       const active = Math.max(0, Math.min(opts.restore.active, opts.restore.tabs.length - 1));
-      opts.restore.tabs.forEach((s, i) => this.insertTab(new Tab(ctx.profile, { pending: s }), i, false, 'page', false));
+      opts.restore.tabs.forEach((s, i) => {
+        const t = new Tab(ctx.profile, { pending: s });
+        t.groupId = s.groupId != null ? (ids.get(s.groupId) ?? null) : null;
+        this.insertTab(t, i, false, 'page', false);
+      });
       this.activate(this.tabs[active]!, { focus: 'page' });
     } else {
       const t = this.createTab(opts.url);
@@ -241,7 +260,9 @@ export class BrowserWindowController {
    */
   insertTab(tab: Tab, index: number, activate: boolean, focus: FocusMode = 'auto', activateIfFirst = true): void {
     const i = Math.max(0, Math.min(index, this.tabs.length));
+    if (tab.groupId !== null && !this.groups.has(tab.groupId)) tab.groupId = null;
     this.tabs.splice(i, 0, tab);
+    this.tidyGroups();
     this.attach(tab);
     // Debajo de la interfaz (índice 0 = al fondo)
     this.win.contentView.addChildView(tab.view, 0);
@@ -251,8 +272,11 @@ export class BrowserWindowController {
   }
 
   /** Crea una pestaña nueva. Por defecto al final y activa. */
-  newTab(opts: { url?: string; referrer?: Referrer; index?: number; activate?: boolean; openerId?: number | null; adopt?: BrowserWindowConstructorOptions } = {}): Tab {
+  newTab(opts: { url?: string; referrer?: Referrer; index?: number; activate?: boolean; openerId?: number | null; adopt?: BrowserWindowConstructorOptions; groupId?: number | null } = {}): Tab {
     const tab = this.createTab(opts.url, { adopt: opts.adopt, openerId: opts.openerId });
+    // Lo que se abre desde una pestaña agrupada queda en su grupo (como en Chrome)
+    const opener = opts.openerId != null ? this.tabs.find((t) => t.id === opts.openerId) : undefined;
+    tab.groupId = opts.groupId !== undefined ? opts.groupId : (opener?.groupId ?? null);
     const hasContent = !!opts.adopt || (!!opts.url && opts.url !== 'about:blank');
     this.insertTab(tab, opts.index ?? this.tabs.length, opts.activate ?? true, hasContent ? 'page' : 'auto');
     if (!opts.adopt) tab.loadURL(opts.url ?? 'about:blank', opts.referrer);
@@ -348,6 +372,9 @@ export class BrowserWindowController {
 
   activate(tab: Tab, opts: { focus?: FocusMode } = {}): void {
     if (!this.tabs.includes(tab)) return;
+    // Activar una pestaña de un grupo contraído lo expande
+    const g = tab.groupId !== null ? this.groups.get(tab.groupId) : undefined;
+    if (g?.collapsed) g.collapsed = false;
     const previous = this.activeTab;
     this.activeTab = tab;
     if (previous && previous !== tab && this.tabs.includes(previous)) previous.view.setVisible(false);
@@ -380,6 +407,7 @@ export class BrowserWindowController {
     this.detach(tab);
     this.tabs.splice(index, 1);
     if (opts.destroy) tab.destroy();
+    this.tidyGroups();
 
     if (this.tabs.length === 0) {
       if (!this.win.isDestroyed()) this.win.close();
@@ -399,10 +427,132 @@ export class BrowserWindowController {
     for (const t of this.tabs.slice(i + 1).reverse()) this.closeTab(t);
   }
 
-  moveTab(tab: Tab, index: number): void {
+  /** Mueve una pestaña; si se indica `groupId`, queda en ese grupo (o sin grupo con null). */
+  moveTab(tab: Tab, index: number, groupId?: number | null): void {
     const from = this.tabs.indexOf(tab);
     if (from < 0) return;
     this.tabs = moveItem(this.tabs, from, index);
+    if (groupId !== undefined) tab.groupId = groupId !== null && this.groups.has(groupId) ? groupId : null;
+    this.tidyGroups();
+    this.queueState();
+  }
+
+  // ---------------------------------------------------------------- grupos de pestañas
+
+  /** Las pestañas de cada grupo juntas; los grupos sin pestañas desaparecen. */
+  private tidyGroups(): void {
+    this.tabs = keepGroupsTogether(this.tabs);
+    for (const id of [...this.groups.keys()]) {
+      if (!this.tabs.some((t) => t.groupId === id)) {
+        this.groups.delete(id);
+        if (this.groupEditorId === id) this.groupEditorId = null;
+      }
+    }
+  }
+
+  private members(groupId: number): Tab[] {
+    return this.tabs.filter((t) => t.groupId === groupId);
+  }
+
+  /** Posición justo después de la última pestaña del grupo. */
+  private groupEnd(groupId: number): number {
+    const last = this.members(groupId).at(-1);
+    return last ? this.tabs.indexOf(last) + 1 : this.tabs.length;
+  }
+
+  createGroup(tab: Tab): number {
+    const id = nextGroupId++;
+    this.groups.set(id, { id, title: '', color: nextGroupColor([...this.groups.values()].map((g) => g.color)), collapsed: false });
+    tab.groupId = id;
+    this.tidyGroups();
+    this.groupEditorId = id; // como en Chrome: se abre el panel para ponerle nombre
+    this.queueState();
+    return id;
+  }
+
+  addToGroup(tab: Tab, groupId: number): void {
+    if (!this.groups.has(groupId) || tab.groupId === groupId) return;
+    const end = this.groupEnd(groupId);
+    const from = this.tabs.indexOf(tab);
+    this.tabs = moveItem(this.tabs, from, from < end ? end - 1 : end);
+    tab.groupId = groupId;
+    this.tidyGroups();
+    this.queueState();
+  }
+
+  removeFromGroup(tab: Tab): void {
+    const gid = tab.groupId;
+    if (gid === null) return;
+    const end = this.groupEnd(gid);
+    const from = this.tabs.indexOf(tab);
+    this.tabs = moveItem(this.tabs, from, end - 1); // queda justo después del grupo
+    tab.groupId = null;
+    this.tidyGroups();
+    this.queueState();
+  }
+
+  updateGroup(id: number, patch: { title?: unknown; color?: unknown; collapsed?: unknown }): void {
+    const g = this.groups.get(id);
+    if (!g) return;
+    if (patch.title !== undefined) g.title = sanitizeGroupTitle(patch.title);
+    if (patch.color !== undefined && isGroupColor(patch.color)) g.color = patch.color;
+    if (typeof patch.collapsed === 'boolean' && patch.collapsed !== g.collapsed) {
+      g.collapsed = patch.collapsed;
+      // Contraer el grupo de la pestaña activa: se pasa a otra de fuera del grupo (o a una nueva)
+      if (g.collapsed && this.activeTab.groupId === id) {
+        const idx = this.tabs.indexOf(this.activeTab);
+        const visible = (t: Tab) => t.groupId === null || !this.groups.get(t.groupId)?.collapsed;
+        const next = this.tabs.slice(idx).find(visible) ?? [...this.tabs.slice(0, idx)].reverse().find(visible);
+        if (next) this.activate(next);
+        else this.newTab();
+      }
+    }
+    this.queueState();
+  }
+
+  setGroupEditor(id: number | null): void {
+    this.groupEditorId = id !== null && this.groups.has(id) ? id : null;
+    this.queueState();
+  }
+
+  groupAction(id: number, action: GroupAction): void {
+    const g = this.groups.get(id);
+    if (!g) return;
+    const members = this.members(id);
+    this.groupEditorId = null;
+    switch (action) {
+      case 'new-tab':
+        g.collapsed = false;
+        this.newTab({ index: this.groupEnd(id), groupId: id });
+        break;
+      case 'ungroup':
+        for (const t of members) t.groupId = null;
+        this.tidyGroups();
+        break;
+      case 'close':
+        for (const t of [...members].reverse()) this.closeTab(t);
+        break;
+      case 'move-to-window': {
+        if (members.length === this.tabs.length) break; // ya está sola en su ventana
+        for (const t of members) this.removeTab(t, { record: false, destroy: false });
+        new BrowserWindowController(this.ctx, { tabs: members, groups: [{ ...g, collapsed: false }] });
+        break;
+      }
+    }
+    this.queueState();
+  }
+
+  /** Mueve el grupo entero (nunca adentro de otro grupo). */
+  moveGroup(id: number, index: number): void {
+    const members = this.members(id);
+    if (!members.length) return;
+    const firstIndex = this.tabs.indexOf(members[0]!);
+    const rest = this.tabs.filter((t) => t.groupId !== id);
+    // `index` cuenta las pestañas del grupo que se mueve: se descuentan si estaban antes
+    const adjusted = index > firstIndex ? index - members.length : index;
+    const at = groupDropIndex(rest, adjusted);
+    rest.splice(at, 0, ...members);
+    this.tabs = rest;
     this.queueState();
   }
 
@@ -411,11 +561,13 @@ export class BrowserWindowController {
     if (this.tabs.length < 2 || !this.tabs.includes(tab)) return undefined;
     this.removeTab(tab, { record: false, destroy: false });
     tab.openerId = null;
+    tab.groupId = null;
     return new BrowserWindowController(this.ctx, { tabs: [tab] });
   }
 
   duplicate(tab: Tab): Tab {
     const copy = new Tab(this.ctx.profile, { kind: tab.kind, openerId: tab.id });
+    copy.groupId = tab.groupId;
     this.insertTab(copy, this.tabs.indexOf(tab) + 1, true, 'page');
     copy.restore(tab.snapshot());
     return copy;
@@ -485,6 +637,8 @@ export class BrowserWindowController {
       activeTabId: this.activeTab.id,
       searchEngine: this.ctx.profile.searchEngineName,
       profile: this.ctx.profiles.windowProfile(this.ctx),
+      groups: [...this.groups.values()],
+      groupEditor: this.groupEditorId,
       downloads: this.downloadsState(),
       bookmarks: this.bookmarksState(),
     };
@@ -874,9 +1028,10 @@ export class BrowserWindowController {
       maximized: this.win.isMaximized(),
       tabs: this.tabs.map((t) => {
         const s = t.saved();
-        return { ...s, ...trimSnapshot(s) };
+        return { ...s, ...trimSnapshot(s), groupId: t.groupId };
       }),
       active: Math.max(0, this.tabs.indexOf(this.activeTab)),
+      groups: [...this.groups.values()].map((g) => ({ ...g })),
     };
   }
 
@@ -1005,10 +1160,20 @@ export class BrowserWindowController {
     const index = tab ? this.tabs.indexOf(tab) : -1;
     this.popup(
       tabMenuTemplate(
-        { hasTab: !!tab, tabCount: this.tabs.length, tabsToRight: index < 0 ? 0 : this.tabs.length - index - 1, canReopen: this.ctx.closedTabs.size > 0 },
         {
+          hasTab: !!tab,
+          tabCount: this.tabs.length,
+          tabsToRight: index < 0 ? 0 : this.tabs.length - index - 1,
+          canReopen: this.ctx.closedTabs.size > 0,
+          groupId: tab?.groupId ?? null,
+          groups: [...this.groups.values()].map((g) => ({ id: g.id, title: g.title, colorName: GROUP_COLORS[g.color].name })),
+        },
+        {
+          addToNewGroup: () => tab && this.createGroup(tab),
+          addToGroup: (gid) => tab && this.addToGroup(tab, gid),
+          removeFromGroup: () => tab && this.removeFromGroup(tab),
           newTab: () => this.newTab(),
-          newTabToRight: () => tab && this.newTab({ index: index + 1 }),
+          newTabToRight: () => tab && this.newTab({ index: index + 1, groupId: tab.groupId }),
           reload: () => tab?.reload(false),
           duplicate: () => tab && this.duplicate(tab),
           moveToNewWindow: () => tab && this.moveToNewWindow(tab),

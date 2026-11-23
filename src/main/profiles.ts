@@ -159,7 +159,7 @@ export class ProfileManager implements ProfilesApi {
     const restore = rt.ctx.profile.settings.startup === 'restore' ? (saved?.windows ?? []) : [];
     let last: BrowserWindowController | undefined;
     for (const w of restore) {
-      last = new BrowserWindowController(rt.ctx, { restore: { tabs: w.tabs, active: w.active }, bounds: w.bounds, maximized: w.maximized });
+      last = new BrowserWindowController(rt.ctx, { restore: { tabs: w.tabs, active: w.active, groups: w.groups }, bounds: w.bounds, maximized: w.maximized });
     }
     if (!last) last = new BrowserWindowController(rt.ctx, { url: opts.url });
     else if (opts.url) last.newTab({ url: opts.url });

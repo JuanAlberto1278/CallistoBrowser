@@ -1,6 +1,7 @@
 import type { NavigationEntry } from 'electron';
 import type { ClosedEntry, TabSnapshot } from './closed-tabs';
 import type { KeyValueStore } from './profile-store';
+import { isGroupColor, sanitizeGroupTitle, type TabGroupState } from '../shared/tab-groups';
 
 // Sesión de ventanas y pestañas guardada en la base del perfil, para volver a ella al reiniciar (o tras un cierre
 // inesperado: se guarda mientras se navega, no solo al salir).
@@ -9,6 +10,8 @@ export interface SavedTab extends TabSnapshot {
   url: string;
   title: string;
   faviconKey: string | null;
+  /** Grupo de la pestaña (id dentro de la ventana guardada). */
+  groupId?: number | null;
 }
 
 export interface SavedWindow {
@@ -16,6 +19,7 @@ export interface SavedWindow {
   maximized: boolean;
   tabs: SavedTab[];
   active: number;
+  groups?: TabGroupState[];
 }
 
 export interface SavedSession {
@@ -66,6 +70,7 @@ function cleanTab(raw: unknown): SavedTab | null {
     url: current.url,
     title: isStr(raw.title) ? raw.title : current.title,
     faviconKey: isStr(raw.faviconKey) ? raw.faviconKey : null,
+    groupId: isNum(raw.groupId) ? raw.groupId : null,
   };
 }
 
@@ -76,7 +81,15 @@ function cleanWindow(raw: unknown): SavedWindow | null {
   const b = isObj(raw.bounds) ? raw.bounds : {};
   const bounds = { x: isNum(b.x) ? b.x : 0, y: isNum(b.y) ? b.y : 0, width: isNum(b.width) ? b.width : 1280, height: isNum(b.height) ? b.height : 860 };
   const active = isNum(raw.active) ? Math.max(0, Math.min(Math.trunc(raw.active), tabs.length - 1)) : 0;
-  return { bounds, maximized: raw.maximized === true, tabs, active };
+  const groups: TabGroupState[] = [];
+  for (const g of Array.isArray(raw.groups) ? raw.groups : []) {
+    if (!isObj(g) || !isNum(g.id) || groups.some((x) => x.id === g.id)) continue;
+    groups.push({ id: g.id, title: sanitizeGroupTitle(g.title), color: isGroupColor(g.color) ? g.color : 'grey', collapsed: g.collapsed === true });
+  }
+  // Una pestaña solo puede pertenecer a un grupo que exista
+  const ids = new Set(groups.map((g) => g.id));
+  for (const t of tabs) if (t.groupId != null && !ids.has(t.groupId)) t.groupId = null;
+  return { bounds, maximized: raw.maximized === true, tabs, active, groups: groups.filter((g) => tabs.some((t) => t.groupId === g.id)) };
 }
 
 function cleanClosed(raw: unknown): ClosedEntry | null {

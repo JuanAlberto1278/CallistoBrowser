@@ -62,10 +62,24 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     const tab = c && tabOf(c, id);
     if (tab) c.activate(tab);
   });
-  ipcMain.on(IPC.moveTab, (e, id: unknown, index: unknown) => {
+  ipcMain.on(IPC.moveTab, (e, id: unknown, index: unknown, groupId: unknown) => {
     const c = from(e);
     const tab = c && tabOf(c, id);
-    if (tab && typeof index === 'number' && Number.isSafeInteger(index)) c.moveTab(tab, index);
+    if (!tab || typeof index !== 'number' || !Number.isSafeInteger(index)) return;
+    c.moveTab(tab, index, groupId === undefined ? undefined : isId(groupId) ? groupId : null);
+  });
+  ipcMain.on(IPC.groupEditor, (e, id: unknown) => from(e)?.setGroupEditor(isId(id) ? id : null));
+  ipcMain.on(IPC.updateGroup, (e, id: unknown, patch: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && isObj(patch)) c.updateGroup(id, { title: patch.title, color: patch.color, collapsed: patch.collapsed });
+  });
+  ipcMain.on(IPC.groupAction, (e, id: unknown, action: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && (action === 'new-tab' || action === 'ungroup' || action === 'close' || action === 'move-to-window')) c.groupAction(id, action);
+  });
+  ipcMain.on(IPC.moveGroup, (e, id: unknown, index: unknown) => {
+    const c = from(e);
+    if (c && isId(id) && typeof index === 'number' && Number.isSafeInteger(index)) c.moveGroup(id, index);
   });
   ipcMain.on(IPC.tabMenu, (e, id: unknown) => {
     const c = from(e);
