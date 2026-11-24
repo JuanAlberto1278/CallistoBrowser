@@ -1,10 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { expectEventually, launchCallisto, typeAddress, type Callisto } from './fixtures';
+import { captureMenus, clickMenuItem, expectEventually, launchCallisto, typeAddress, type Callisto } from './fixtures';
 
 // Un servidor local que imita la API de GitHub Releases (CALLISTO_TEST_UPDATE_BASE, solo sin empaquetar).
 let server: Server;
@@ -80,4 +80,31 @@ test('instalador que no coincide con el publicado: no se ofrece', async () => {
   await p.getByTestId('update-check').click();
   await expect(p.getByTestId('update-status')).toContainText('no coincide con el publicado');
   await expect(p.getByTestId('update-install')).toHaveCount(0);
+});
+
+test('con una versión lista: punto en el botón ⋯ y "Reiniciar para actualizar" en el menú', async () => {
+  release = { version: '99.0.0', installer: randomBytes(10_000) };
+  await captureMenus(c.app);
+  await expect(c.ui.getByTestId('app-menu')).toHaveAttribute('data-update', '');
+  const p = await about();
+  await p.getByTestId('update-check').click();
+  await expect(p.getByTestId('update-status')).toContainText('99.0.0');
+  await expect(c.ui.getByTestId('app-menu')).toHaveAttribute('data-update', '99.0.0');
+  await expect(c.ui.getByTestId('app-menu')).toHaveClass(/has-update/);
+  await c.ui.getByTestId('app-menu').click();
+  await clickMenuItem(c.app, 'Reiniciar para actualizar a 99.0.0');
+  await expectEventually(async () => !!(await c.app.evaluate(() => (globalThis as unknown as { __callistoUpdateInstalled?: string }).__callistoUpdateInstalled)));
+});
+
+test('después de actualizar: avisa a qué versión, una sola vez', async () => {
+  await c.close();
+  writeFileSync(join(dir, 'last-version.txt'), '1.0.0');
+  c = await launchCallisto([], dir, { CALLISTO_TEST_UPDATE_BASE: base });
+  await expect(c.ui.getByTestId('notice')).toContainText(`Callisto se actualizó a la versión ${current}`);
+  expect(readFileSync(join(dir, 'last-version.txt'), 'utf8')).toBe(current);
+  // La próxima vez, sin aviso
+  await c.close();
+  c = await launchCallisto([], dir, { CALLISTO_TEST_UPDATE_BASE: base });
+  await new Promise((r) => setTimeout(r, 1000));
+  await expect(c.ui.getByTestId('notice')).toHaveCount(0);
 });

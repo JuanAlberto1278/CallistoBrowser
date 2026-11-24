@@ -22,6 +22,8 @@ export interface Settings {
   offerPasswords: boolean;
   /** Dormir las pestañas que no se usan después de estos minutos (0 = nunca). */
   sleepTabsAfter: SleepMinutes;
+  /** Sitios (dominios) cuyas pestañas nunca se duermen solas. */
+  neverSleepSites: string[];
   /** Tema elegido (id de un predeterminado o de uno propio). */
   theme: string;
   /** Temas creados por el usuario. */
@@ -31,7 +33,7 @@ export interface Settings {
 export const SLEEP_OPTIONS = [0, 5, 15, 30, 60, 120] as const;
 export type SleepMinutes = (typeof SLEEP_OPTIONS)[number];
 
-export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always', offerPasswords: true, sleepTabsAfter: 15, theme: SYSTEM_THEME_ID, customThemes: [] };
+export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always', offerPasswords: true, sleepTabsAfter: 15, neverSleepSites: [], theme: SYSTEM_THEME_ID, customThemes: [] };
 
 /** Ruta absoluta de Windows (C:\… o \\servidor\…). */
 const ABSOLUTE_WIN_PATH = /^([a-zA-Z]:\\|\\\\[^\\]+\\)/;
@@ -46,6 +48,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     bookmarksBar: r.bookmarksBar === 'always' || r.bookmarksBar === 'never' || r.bookmarksBar === 'newtab' ? r.bookmarksBar : DEFAULT_SETTINGS.bookmarksBar,
     offerPasswords: typeof r.offerPasswords === 'boolean' ? r.offerPasswords : DEFAULT_SETTINGS.offerPasswords,
     sleepTabsAfter: (SLEEP_OPTIONS as readonly unknown[]).includes(r.sleepTabsAfter) ? (r.sleepTabsAfter as SleepMinutes) : DEFAULT_SETTINGS.sleepTabsAfter,
+    neverSleepSites: sanitizeSites(r.neverSleepSites),
     ...sanitizeThemes(r.theme, r.customThemes),
   };
 }
@@ -61,4 +64,43 @@ function sanitizeThemes(theme: unknown, custom: unknown): { theme: string; custo
   }
   const exists = typeof theme === 'string' && (PRESET_THEMES.some((t) => t.id === theme) || list.some((t) => t.id === theme));
   return { theme: exists ? (theme as string) : SYSTEM_THEME_ID, customThemes: list };
+}
+
+export const MAX_NEVER_SLEEP_SITES = 100;
+
+/**
+ * Dominio escrito por el usuario ("music.youtube.com", "https://mail.google.com/…", "*.ejemplo.com") como dominio
+ * limpio, o null si no lo es.
+ */
+export function normalizeSite(input: string): string | null {
+  let s = input.trim().toLowerCase();
+  if (!s) return null;
+  try {
+    if (/^[a-z][a-z0-9+.-]*:\/\//.test(s)) s = new URL(s).hostname;
+  } catch {
+    return null;
+  }
+  s = s.replace(/^\*\./, '').replace(/^www\./, '').replace(/[/:?#].*$/, '').replace(/\.$/, '');
+  return /^([a-z0-9-]+\.)*[a-z0-9-]+$/.test(s) && s.length <= 253 ? s : null;
+}
+
+function sanitizeSites(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    const site = typeof v === 'string' ? normalizeSite(v) : null;
+    if (site && !out.includes(site) && out.length < MAX_NEVER_SLEEP_SITES) out.push(site);
+  }
+  return out;
+}
+
+/** ¿La dirección es de uno de esos sitios (o de un subdominio)? */
+export function matchesSite(url: string, sites: readonly string[]): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return false;
+  }
+  return sites.some((s) => host === s || host.endsWith(`.${s}`));
 }

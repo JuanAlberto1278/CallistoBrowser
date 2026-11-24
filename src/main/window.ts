@@ -4,6 +4,7 @@ import { Tab, type TabKind } from './tab';
 import { showWindow, SLEEP_MINUTE_MS } from './test-mode';
 import { AutofillPopup } from './autofill-popup';
 import { stopOrphanServiceWorkers } from './service-worker-reaper';
+import { updater } from './updater';
 import type { Profile } from './profile';
 import { matchShortcut, type ShortcutAction } from './shortcuts';
 import type { ClosedTabs, TabSnapshot } from './closed-tabs';
@@ -17,6 +18,7 @@ import { GROUP_COLORS, groupDropIndex, isGroupColor, keepGroupsTogether, nextGro
 import { sanitizeFileName, siteOf } from '../shared/downloads';
 import { chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
+import { matchesSite, normalizeSite } from '../shared/settings';
 import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
 import { internalPageOf, internalUrl, type InternalPage } from '../shared/internal-pages';
 import type { ExtensionInstallPrompt } from '../shared/extensions';
@@ -625,13 +627,35 @@ export class BrowserWindowController {
     return true;
   }
 
+  /** Sitio de la pestaña para "No dormir nunca este sitio": su dominio y si ya está en la lista (null: no es un sitio web). */
+  private neverSleepState(tab: Tab): { site: string; listed: boolean } | null {
+    let site: string | null = null;
+    try {
+      const u = new URL(tab.url);
+      site = u.protocol === 'http:' || u.protocol === 'https:' ? normalizeSite(u.hostname) : null;
+    } catch {
+      site = null;
+    }
+    if (!site) return null;
+    return { site, listed: matchesSite(tab.url, this.ctx.profile.settings.neverSleepSites) };
+  }
+
+  private toggleNeverSleep(tab: Tab): void {
+    const state = this.neverSleepState(tab);
+    if (!state) return;
+    const list = this.ctx.profile.settings.neverSleepSites;
+    const next = state.listed ? list.filter((s) => !matchesSite(tab.url, [s])) : [...list, state.site];
+    this.ctx.profile.updateSettings({ neverSleepSites: next });
+  }
+
   /** Duerme las pestañas que no se usan hace más de lo configurado, y libera los service workers sin pestañas. */
   private sleepIdleTabs(): void {
     if (this.closing) return;
     const minutes = this.ctx.profile.settings.sleepTabsAfter;
     if (minutes) {
       const limit = Date.now() - minutes * SLEEP_MINUTE_MS;
-      for (const tab of [...this.tabs]) if (tab !== this.activeTab && tab.lastActive < limit) this.sleepTab(tab);
+      const keep = this.ctx.profile.settings.neverSleepSites;
+      for (const tab of [...this.tabs]) if (tab !== this.activeTab && tab.lastActive < limit && !matchesSite(tab.url, keep)) this.sleepTab(tab);
     }
     // Una sola ventana por perfil hace la revisión (la primera), con las pestañas despiertas de todas
     const profile = this.ctx.profile;
@@ -739,6 +763,7 @@ export class BrowserWindowController {
       downloads: this.downloadsState(),
       bookmarks: this.bookmarksState(),
       theme: themeVars(this.ctx.profile.theme),
+      updateReady: updater.status.state === 'ready' ? updater.status.version : null,
       extensions: {
         // Sin extensiones en las ventanas privadas
         partition: this.ctx.profile.extensions ? `persist:profile-${this.ctx.profile.id}` : null,
@@ -1296,7 +1321,7 @@ export class BrowserWindowController {
     });
     this.popup(
       appMenuTemplate(
-        { zoomPercent: this.activeTab.state.zoomPercent, bookmarks },
+        { zoomPercent: this.activeTab.state.zoomPercent, bookmarks, updateVersion: updater.status.state === 'ready' ? updater.status.version : undefined },
         {
           newTab: () => this.newTab(),
           newWindow: () => { new BrowserWindowController(this.ctx); },
@@ -1309,6 +1334,7 @@ export class BrowserWindowController {
           find: () => this.openFind(),
           settings: () => this.openInternalPage('settings'),
           closeWindow: () => this.win.close(),
+          installUpdate: () => updater.installAndRestart(),
         },
       ),
     );
@@ -1323,6 +1349,7 @@ export class BrowserWindowController {
           tabCount: this.tabs.length,
           tabsToRight: index < 0 ? 0 : this.tabs.length - index - 1,
           canSleep: !!tab && tab !== this.activeTab && tab.canSleep,
+          neverSleepSite: tab ? this.neverSleepState(tab) : null,
           canReopen: this.ctx.closedTabs.size > 0,
           groupId: tab?.groupId ?? null,
           groups: [...this.groups.values()].map((g) => ({ id: g.id, title: g.title, colorName: GROUP_COLORS[g.color].name })),
@@ -1337,6 +1364,7 @@ export class BrowserWindowController {
           duplicate: () => tab && this.duplicate(tab),
           moveToNewWindow: () => tab && this.moveToNewWindow(tab),
           sleep: () => tab && this.sleepTab(tab),
+          toggleNeverSleep: () => tab && this.toggleNeverSleep(tab),
           close: () => tab && this.closeTab(tab),
           closeOthers: () => tab && this.closeOtherTabs(tab),
           closeToRight: () => tab && this.closeTabsToRight(tab),

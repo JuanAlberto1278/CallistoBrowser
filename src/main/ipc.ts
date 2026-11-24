@@ -15,7 +15,7 @@ import { BookmarkError } from './bookmark-store';
 import type { ProfileManager } from './profiles';
 import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
 import type { ProfilesSnapshot } from '../shared/internal-api';
-import { INTERNAL_IPC, type ClearPeriod, type ExtensionsSnapshot, type HistoryEntry, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
+import { INTERNAL_IPC, type ClearPeriod, type ExtensionsSnapshot, type HistoryEntry, type MemoryUsage, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
 import { SEARCH_ENGINES, type SearchEngineId } from '../shared/settings';
@@ -307,6 +307,18 @@ function registerInternalIpc(): void {
   ipcMain.handle(INTERNAL_IPC.settingsDefaultBrowser, (e) => {
     fromInternal(e, 'settings') ?? denied();
     return defaultBrowserStatus();
+  });
+  ipcMain.handle(INTERNAL_IPC.settingsMemory, (e): MemoryUsage => {
+    fromInternal(e, 'settings') ?? denied();
+    const metrics = app.getAppMetrics();
+    const tabs = [...BrowserWindowController.all].flatMap((w) => w.tabs);
+    const asleep = tabs.filter((t) => t.asleep).length;
+    return {
+      mb: Math.round(metrics.reduce((sum, m) => sum + (m.memory.privateBytes ?? m.memory.workingSetSize), 0) / 1024),
+      processes: metrics.length,
+      awakeTabs: tabs.length - asleep,
+      asleepTabs: asleep,
+    };
   });
   ipcMain.handle(INTERNAL_IPC.settingsUpdateStatus, (e) => {
     fromInternal(e, 'settings') ?? denied();

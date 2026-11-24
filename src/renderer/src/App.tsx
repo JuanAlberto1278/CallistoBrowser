@@ -165,7 +165,14 @@ export function App() {
         {state?.extensions.partition && <ExtensionActions partition={state.extensions.partition} />}
         {downloads && <DownloadsButton state={downloads} onClick={() => api.setDownloadsPanel(!downloads.panelOpen)} />}
         {state && <ProfileButton profile={state.profile} />}
-        <button className="icon-button" data-testid="app-menu" title="Configuración y más" aria-label="Configuración y más" onClick={() => api.showAppMenu()}>
+        <button
+          className={`icon-button ${state?.updateReady ? 'has-update' : ''}`}
+          data-testid="app-menu"
+          data-update={state?.updateReady ?? ''}
+          title={state?.updateReady ? `Configuración y más — la versión ${state.updateReady} está lista para instalarse` : 'Configuración y más'}
+          aria-label={state?.updateReady ? `Configuración y más (actualización ${state.updateReady} lista)` : 'Configuración y más'}
+          onClick={() => api.showAppMenu()}
+        >
           <MoreIcon />
         </button>
       </div>

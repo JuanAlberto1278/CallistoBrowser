@@ -41,6 +41,14 @@ export interface SettingsSnapshot {
   about: { version: string; electron: string; chromium: string; node: string; v8: string };
 }
 
+export interface MemoryUsage {
+  /** Memoria privada de todos los procesos de Callisto, en MB. */
+  mb: number;
+  processes: number;
+  awakeTabs: number;
+  asleepTabs: number;
+}
+
 /** Qué borrar en "Borrar datos de navegación". El período solo aplica al historial (Chromium borra el resto entero). */
 export interface ClearDataRequest {
   period: ClearPeriod;
@@ -68,6 +76,7 @@ export const INTERNAL_IPC = {
   settingsClearData: 'callisto-internal:settings-clear-data',
   settingsDefaultBrowser: 'callisto-internal:settings-default-browser',
   settingsUpdateStatus: 'callisto-internal:settings-update-status',
+  settingsMemory: 'callisto-internal:settings-memory',
   settingsCheckUpdate: 'callisto-internal:settings-check-update',
   settingsInstallUpdate: 'callisto-internal:settings-install-update',
   settingsMakeDefault: 'callisto-internal:settings-make-default',
@@ -162,6 +171,8 @@ export interface CallistoInternalApi {
     checkUpdate(): Promise<{ enabled: boolean; status: UpdateStatus }>;
     /** Cierra Callisto e instala la versión descargada. */
     installUpdate(): void;
+    /** Memoria que usa Callisto ahora (todos sus procesos) y pestañas despiertas/dormidas. */
+    memoryUsage(): Promise<MemoryUsage>;
   };
   downloads: {
     list(query?: string): Promise<DownloadEntry[]>;

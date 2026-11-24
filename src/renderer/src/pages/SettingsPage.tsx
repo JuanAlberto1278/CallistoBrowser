@@ -3,6 +3,8 @@ import { ThemesSection } from './Themes';
 import { ClearDataPanel } from './ClearData';
 import { DefaultBrowserSection } from './DefaultBrowser';
 import { UpdatesRow } from './Updates';
+import { CHANGELOG } from '../../../shared/changelog';
+import { MemoryNow, NeverSleepSites } from './Performance';
 import type { SettingsSnapshot } from '../../../shared/internal-api';
 import type { SearchEngineId, Settings } from '../../../shared/settings';
 
@@ -75,6 +77,7 @@ export function SettingsPage() {
 
       <section className="card" aria-labelledby="s-performance">
         <h2 id="s-performance">Rendimiento</h2>
+        <MemoryNow />
         <div className="row">
           <label htmlFor="sleep">Dormir las pestañas que no usás después de</label>
           <select id="sleep" data-testid="settings-sleep" value={settings.sleepTabsAfter} onChange={(e) => update({ sleepTabsAfter: Number(e.target.value) as Settings['sleepTabsAfter'] })}>
@@ -91,6 +94,7 @@ export function SettingsPage() {
           duermen la pestaña que estás viendo, las que reproducen sonido, cargan o tienen texto que escribiste. También podés dormir una pestaña desde su
           menú (clic derecho).
         </p>
+        <NeverSleepSites settings={settings} update={update} />
       </section>
 
       <section className="card" aria-labelledby="s-appearance">
@@ -243,6 +247,19 @@ export function SettingsPage() {
           </span>
         </div>
         <UpdatesRow />
+        <h3 className="theme-subtitle">Novedades</h3>
+        {CHANGELOG.map((entry, i) => (
+          <details key={entry.version} open={i === 0} className="changelog" data-testid="changelog-entry">
+            <summary>
+              Versión {entry.version} <span className="muted small">({entry.date})</span>
+            </summary>
+            <ul>
+              {entry.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </details>
+        ))}
       </section>
     </div>
   );

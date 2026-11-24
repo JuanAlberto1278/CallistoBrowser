@@ -20,6 +20,7 @@ const api: CallistoInternalApi = {
     resetDownloadDir: () => ipcRenderer.invoke(INTERNAL_IPC.settingsResetDownloadDir),
     defaultBrowser: () => ipcRenderer.invoke(INTERNAL_IPC.settingsDefaultBrowser),
     updateStatus: () => ipcRenderer.invoke(INTERNAL_IPC.settingsUpdateStatus),
+    memoryUsage: () => ipcRenderer.invoke(INTERNAL_IPC.settingsMemory),
     checkUpdate: () => ipcRenderer.invoke(INTERNAL_IPC.settingsCheckUpdate),
     installUpdate: () => ipcRenderer.send(INTERNAL_IPC.settingsInstallUpdate),
     makeDefault: () => ipcRenderer.send(INTERNAL_IPC.settingsMakeDefault),

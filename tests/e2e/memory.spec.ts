@@ -111,3 +111,37 @@ test('el service worker de un sitio sin pestañas despiertas se detiene (libera 
   await expect(page).toHaveTitle('Con service worker');
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(1);
 });
+
+test('sitios que nunca se duermen: desde la configuración y desde el menú de la pestaña', async () => {
+  dir = mkdtempSync(join(tmpdir(), 'callisto-mem-'));
+  c = await launchCallisto([], dir, { CALLISTO_TEST_MINUTE_MS: '300' });
+  await captureMenus(c.app);
+  const other = server.base.replace('127.0.0.1', 'localhost');
+  await typeAddress(c.ui, 'callisto://settings');
+  await expectEventually(() => c.app.windows().some((w) => w.url().startsWith('callisto://settings')));
+  const settings = c.app.windows().find((w) => w.url().startsWith('callisto://settings'))!;
+  await settings.getByTestId('settings-sleep').selectOption('5');
+  await settings.getByTestId('never-sleep-input').fill(`http://localhost:1234/cualquier/ruta`);
+  await settings.getByTestId('never-sleep-add').click();
+  await expect(settings.getByTestId('never-sleep-site')).toHaveText(['localhostQuitar']);
+
+  await typeAddress(c.ui, `${other}/page1`); // localhost: en la lista
+  await expectEventually(() => webPages(c.app, (u) => u.startsWith(`${other}/page1`)).length === 1);
+  await c.ui.getByTestId('new-tab').click();
+  await typeAddress(c.ui, `${server.base}/page3`); // 127.0.0.1: no
+  await expectEventually(() => livePages('/page3') === 1);
+  await c.ui.getByTestId('new-tab').click();
+  await typeAddress(c.ui, `${server.base}/find`);
+  await expect(tabs().nth(1)).toHaveAttribute('data-asleep', 'true', { timeout: 15_000 });
+  await new Promise((r) => setTimeout(r, 1500));
+  await expect(tabs().nth(0)).toHaveAttribute('data-asleep', 'false');
+
+  // Desde el menú de la pestaña: marcar 127.0.0.1 y ya no se duerme
+  await tabs().nth(1).click(); // despierta
+  await expect(tabs().nth(1)).toHaveAttribute('data-asleep', 'false');
+  await tabs().nth(2).click();
+  await tabs().nth(1).click({ button: 'right' });
+  await clickMenuItem(c.app, 'No dormir nunca 127.0.0.1');
+  await new Promise((r) => setTimeout(r, 2500));
+  await expect(tabs().nth(1)).toHaveAttribute('data-asleep', 'false');
+});

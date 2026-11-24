@@ -1,5 +1,5 @@
 import { app, Menu, session } from 'electron';
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { configureUserData, prepareQuarantine, quarantineDir } from './paths';
@@ -10,6 +10,7 @@ import { BrowserWindowController } from './window';
 import { registerIpc, registerProfilesIpc } from './ipc';
 import { registerPasswordIpc } from './passwords';
 import { updater } from './updater';
+import { compareSemver, isSemver } from '../shared/updates';
 import { ipcMain } from 'electron';
 import { Tab } from './tab';
 import { PAGE_EDITED } from '../shared/page-signals';
@@ -130,13 +131,33 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
 
-    // Actualizaciones de Callisto (solo en el ejecutable empaquetado)
+    // Actualizaciones de Callisto (solo en el ejecutable empaquetado). Con una versión lista, las ventanas lo muestran.
+    updater.on('status', () => BrowserWindowController.refreshAll());
     updater.start();
 
     // Al arrancar: los perfiles que estaban abiertos al salir (o el último usado). La URL recibida, en el último.
     const startUrl = urlFromArgv(process.argv);
     const toOpen = registry.lastActive.length ? [...registry.lastActive] : [registry.lastUsed];
     toOpen.forEach((id, i) => profiles.openProfile(id, i === toOpen.length - 1 && startUrl ? { url: startUrl } : {}));
+
+    // ¿Callisto se actualizó desde la última vez? Se avisa una vez, en la ventana que queda al frente.
+    const versionFile = join(app.getPath('userData'), 'last-version.txt');
+    let previous = '';
+    try {
+      previous = readFileSync(versionFile, 'utf8').trim();
+    } catch {
+      /* primera vez */
+    }
+    if (isSemver(previous) && compareSemver(previous, app.getVersion()) < 0) {
+      BrowserWindowController.current()?.active.showNotice('info', `Callisto se actualizó a la versión ${app.getVersion()}. Las novedades están en Configuración → Acerca de Callisto.`);
+    }
+    if (previous !== app.getVersion()) {
+      try {
+        writeFileSync(versionFile, app.getVersion());
+      } catch {
+        /* se reintenta la próxima vez */
+      }
+    }
 
     // Abrir Callisto otra vez: la URL recibida va a una pestaña nueva de la ventana actual (como Chrome);
     // sin URL, se enfoca la ventana.

@@ -138,6 +138,8 @@ export interface TabMenuInfo {
   canReopen: boolean;
   /** La pestaña se puede dormir (no es la activa, no está cargando, no suena…). */
   canSleep?: boolean;
+  /** Sitio de la pestaña y si nunca se duerme (null: no es un sitio web). */
+  neverSleepSite?: { site: string; listed: boolean } | null;
 }
 
 export interface TabMenuActions {
@@ -150,6 +152,7 @@ export interface TabMenuActions {
   duplicate(): void;
   moveToNewWindow(): void;
   sleep?(): void;
+  toggleNeverSleep?(): void;
   close(): void;
   closeOthers(): void;
   closeToRight(): void;
@@ -178,6 +181,9 @@ export function tabMenuTemplate(info: TabMenuInfo, a: TabMenuActions): Item[] {
     { label: 'Duplicar', accelerator: 'Ctrl+Shift+K', registerAccelerator: false, click: () => a.duplicate() },
     { label: 'Mover a una ventana nueva', enabled: info.tabCount > 1, click: () => a.moveToNewWindow() },
     { label: 'Dormir la pestaña (liberar memoria)', enabled: !!info.canSleep, click: () => a.sleep?.() },
+    ...(info.neverSleepSite
+      ? [{ label: `No dormir nunca ${info.neverSleepSite.site.replace(/&/g, '&&')}`, type: 'checkbox' as const, checked: info.neverSleepSite.listed, click: () => a.toggleNeverSleep?.() }]
+      : []),
     SEP,
     { label: 'Cerrar pestaña', accelerator: 'Ctrl+W', registerAccelerator: false, click: () => a.close() },
     { label: 'Cerrar las demás pestañas', enabled: info.tabCount > 1, click: () => a.closeOthers() },
@@ -201,10 +207,15 @@ export interface AppMenuActions {
   find(): void;
   settings(): void;
   closeWindow(): void;
+  /** Cerrar Callisto e instalar la versión descargada. */
+  installUpdate?(): void;
 }
 
-export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[] }, a: AppMenuActions): Item[] {
+export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[]; updateVersion?: string }, a: AppMenuActions): Item[] {
+  // Versión nueva descargada: primero en el menú (como Chrome)
+  const update: Item[] = info.updateVersion ? [{ label: `Reiniciar para actualizar a ${info.updateVersion}`, click: () => a.installUpdate?.() }, SEP] : [];
   return [
+    ...update,
     { label: 'Nueva pestaña', accelerator: 'Ctrl+T', registerAccelerator: false, click: () => a.newTab() },
     { label: 'Nueva ventana', accelerator: 'Ctrl+N', registerAccelerator: false, click: () => a.newWindow() },
     { label: 'Nueva ventana privada', accelerator: 'Ctrl+Shift+N', registerAccelerator: false, click: () => a.newPrivateWindow() },

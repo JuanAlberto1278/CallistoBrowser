@@ -139,6 +139,8 @@ export interface WindowState {
   extensions: ExtensionsUiState;
   /** Colores del tema elegido (null en ui = "Sistema"). */
   theme: ThemeVars;
+  /** Versión nueva de Callisto descargada y lista para instalar (null = no hay). */
+  updateReady: string | null;
 }
 
 export interface ExtensionsUiState {

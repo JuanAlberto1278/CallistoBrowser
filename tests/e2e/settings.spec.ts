@@ -90,3 +90,14 @@ test('abrir un archivo .html pasado por Windows (línea de comandos)', async () 
   const page = c.app.windows().find((w) => w.url().startsWith('file:'))!;
   await expect(page).toHaveTitle('Documento local');
 });
+
+test('rendimiento: memoria en uso; acerca de: novedades de esta versión', async () => {
+  const version = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8')).version as string;
+  const p = await settingsPage();
+  await expect(p.getByTestId('memory-now')).toBeVisible();
+  const mb = Number((await p.getByTestId('memory-mb').textContent())!.replace(/\D/g, ''));
+  expect(mb).toBeGreaterThan(50);
+  expect(mb).toBeLessThan(5000);
+  await expect(p.getByTestId('memory-asleep')).toHaveText('0');
+  await expect(p.getByTestId('changelog-entry').first()).toContainText(`Versión ${version}`);
+});

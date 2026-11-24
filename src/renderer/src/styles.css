@@ -795,3 +795,17 @@ browser-action-list.extension-actions::part(badge) { font: 600 9px/1 "Segoe UI",
 
 /* Pestaña dormida (sin proceso, para ahorrar memoria): atenuada, como en Edge */
 .tab.asleep:not(.active) .tab-icon, .tab.asleep:not(.active) .tab-title { opacity: 0.55; }
+
+/* Versión nueva de Callisto lista para instalarse: un punto en el botón ⋯ */
+.icon-button.has-update { position: relative; }
+.icon-button.has-update::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--focus);
+  box-shadow: 0 0 0 2px var(--bg);
+}
