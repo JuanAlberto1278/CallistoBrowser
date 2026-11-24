@@ -16,13 +16,13 @@ import { bookmarkItemMenu, bookmarksSubmenu, folderMenu, nodesMenu } from './boo
 import type { ProfileInfo, WindowProfile } from '../shared/profiles';
 import { GROUP_COLORS, groupDropIndex, isGroupColor, keepGroupsTogether, nextGroupColor, sanitizeGroupTitle, type GroupAction, type TabGroupState } from '../shared/tab-groups';
 import { sanitizeFileName, siteOf } from '../shared/downloads';
-import { chromeHeight } from '../shared/layout';
+import { TAB_STRIP_HEIGHT, chromeHeight } from '../shared/layout';
 import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
 import { matchesSite, normalizeSite } from '../shared/settings';
 import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
 import { internalPageOf, internalUrl, type InternalPage } from '../shared/internal-pages';
 import type { ExtensionInstallPrompt } from '../shared/extensions';
-import { themeVars } from '../shared/themes';
+import { themeVars, titleBarColors } from '../shared/themes';
 import { INTERNAL_IPC } from '../shared/internal-api';
 
 /** Guardado de la sesión: cada cambio lo marca; al cerrar la última ventana se guarda en el acto. */
@@ -163,7 +163,18 @@ export class BrowserWindowController {
   private extensionPrompt: { prompt: ExtensionInstallPrompt; resolve: (allow: boolean) => void } | null = null;
 
   constructor(readonly ctx: WindowContext, opts: WindowOptions = {}) {
-    this.win = new BaseWindow({ ...initialBounds(opts), show: false, minWidth: 400, minHeight: 300, title: 'Callisto', backgroundColor: '#f7f7f7' });
+    // Sin barra de título propia (como Edge y Chrome): las pestañas van arriba, en la misma fila que los botones de ventana
+    // de Windows, que los sigue dibujando el sistema (con los diseños de ajuste de Windows 11) con los colores del tema.
+    this.win = new BaseWindow({
+      ...initialBounds(opts),
+      show: false,
+      minWidth: 400,
+      minHeight: 300,
+      title: 'Callisto',
+      backgroundColor: '#f7f7f7',
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { ...this.titleBarColorsFor(ctx), height: TAB_STRIP_HEIGHT },
+    });
     showWindow(this.win);
     if (opts.maximized) this.win.maximize();
 
@@ -715,6 +726,27 @@ export class BrowserWindowController {
    * Modo claro u oscuro del tema para Chromium (menús, barras de desplazamiento, y prefers-color-scheme de los sitios,
    * como en Chrome). Es uno solo para toda la app: manda la ventana enfocada.
    */
+  private titleBarColorsFor(ctx: WindowContext): { color: string; symbolColor: string } {
+    return titleBarColors(ctx.profile.theme, { private: ctx.profile.isPrivate, systemDark: nativeTheme.shouldUseDarkColors });
+  }
+
+  /** Últimos colores que informó la interfaz (los reales de su franja). */
+  private titleBarFromUi: { color: string; symbolColor: string } | null = null;
+
+  /**
+   * Colores de los botones de ventana de Windows. Los manda la interfaz (los que de verdad tiene su franja: tema, modo de
+   * Windows, ventana privada); hasta entonces, los del tema.
+   */
+  applyTitleBar(colors?: { color: string; symbolColor: string }): void {
+    if (colors) this.titleBarFromUi = colors;
+    if (this.win.isDestroyed()) return;
+    try {
+      this.win.setTitleBarOverlay({ ...(this.titleBarFromUi ?? this.titleBarColorsFor(this.ctx)), height: TAB_STRIP_HEIGHT });
+    } catch {
+      /* ventana cerrándose */
+    }
+  }
+
   applyNativeTheme(): void {
     const t = this.ctx.profile.theme;
     const source = t.colors ? t.mode : 'system';
@@ -1127,6 +1159,7 @@ export class BrowserWindowController {
   static settingsChanged(): void {
     this.refreshAll();
     this.current()?.applyNativeTheme();
+    for (const w of this.all) w.applyTitleBar();
     for (const w of this.all) {
       const vars = themeVars(w.ctx.profile.theme);
       for (const t of w.tabs) if (t.kind === 'internal' && !t.webContents.isDestroyed()) t.webContents.send(INTERNAL_IPC.themeChanged, vars);

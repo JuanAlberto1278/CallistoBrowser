@@ -163,3 +163,10 @@ export function applyThemeVars(root: HTMLElement, vars: Record<string, string> |
   if (mode) root.style.colorScheme = mode;
   else root.style.removeProperty('color-scheme');
 }
+
+/** Botones de ventana de Windows (minimizar, maximizar, cerrar) sobre la franja de pestañas: fondo y símbolos. */
+export function titleBarColors(theme: Theme, opts: { private: boolean; systemDark: boolean }): { color: string; symbolColor: string } {
+  if (opts.private) return { color: '#1b1726', symbolColor: '#f1eefb' }; // los de las ventanas privadas (styles.css)
+  if (theme.colors) return { color: theme.colors.strip, symbolColor: theme.colors.text };
+  return opts.systemDark ? { color: '#1f1f1f', symbolColor: '#f1f1f1' } : { color: '#e6e6e6', symbolColor: '#1b1b1b' };
+}

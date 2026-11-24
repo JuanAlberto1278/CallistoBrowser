@@ -108,9 +108,6 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
         e.preventDefault();
         api.showTabMenu(null);
       }}
-      onDoubleClick={(e) => {
-        if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('tabs')) api.newTab();
-      }}
     >
       <div
         className="tabs"

@@ -1,4 +1,4 @@
-import { app, Menu, session } from 'electron';
+import { app, Menu, nativeTheme, session } from 'electron';
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
@@ -133,6 +133,10 @@ if (!app.requestSingleInstanceLock()) {
 
     // Actualizaciones de Callisto (solo en el ejecutable empaquetado). Con una versión lista, las ventanas lo muestran.
     updater.on('status', () => BrowserWindowController.refreshAll());
+    // Con el tema "Sistema", los botones de ventana siguen el modo claro u oscuro de Windows
+    nativeTheme.on('updated', () => {
+      for (const w of BrowserWindowController.all) w.applyTitleBar();
+    });
     updater.start();
 
     // Al arrancar: los perfiles que estaban abiertos al salir (o el último usado). La URL recibida, en el último.

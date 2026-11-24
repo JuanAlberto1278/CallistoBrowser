@@ -51,6 +51,7 @@ const api: CallistoUiApi = {
     }),
   groupAction: (id, action) => ipcRenderer.send(IPC.groupAction, Number(id), String(action)),
   moveGroup: (id, index) => ipcRenderer.send(IPC.moveGroup, Number(id), Number(index)),
+  setTitleBarColors: (color, symbolColor) => ipcRenderer.send(IPC.titleBarColors, String(color), String(symbolColor)),
   answerExtensionInstall: (id, allow) => ipcRenderer.send(IPC.answerExtensionInstall, Number(id), allow === true),
   showExtensionMenu: (extensionId) => ipcRenderer.send(IPC.extensionMenu, String(extensionId)),
   answerPasswordOffer: (id, answer, username) => ipcRenderer.send(IPC.answerPasswordOffer, Number(id), String(answer), username === undefined ? undefined : String(username)),

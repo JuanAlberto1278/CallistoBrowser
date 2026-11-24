@@ -109,6 +109,24 @@ export function App() {
     if (theme) applyThemeVars(document.documentElement, theme.ui, theme.ui ? theme.mode : null);
   }, [theme]);
 
+  // Botones de ventana de Windows con los colores reales de la franja (tema, modo de Windows, ventana privada)
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => setSystemDark(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  useLayoutEffect(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    const cs = getComputedStyle(el);
+    const color = toHex(cs.backgroundColor);
+    const symbol = toHex(cs.color);
+    if (color && symbol) api.setTitleBarColors(color, symbol);
+  }, [theme, systemDark, state?.profile.private, api]);
+
   // La interfaz se extiende sobre la página lo justo para mostrar los paneles abiertos
   const overlayBottom = Math.max(0, ...Object.values(overlays));
   useLayoutEffect(() => {
@@ -130,7 +148,7 @@ export function App() {
         if (state?.groupEditor != null) api.editGroup(null);
       }}
     >
-      <div style={{ height: TAB_STRIP_HEIGHT }} className="tabstrip-row">
+      <div style={{ height: TAB_STRIP_HEIGHT }} className="tabstrip-row" ref={stripRef}>
         {state && <TabStrip tabs={state.tabs} activeId={state.activeTabId} favicons={favicons} groups={state.groups} />}
       </div>
       <div className="toolbar" role="toolbar" aria-label="Navegación" style={{ height: TOOLBAR_HEIGHT - 2 }}>
@@ -210,4 +228,10 @@ export function App() {
       {state?.extensions.prompt && <ExtensionInstallDialog key={state.extensions.prompt.id} prompt={state.extensions.prompt} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportExtension} />}
     </div>
   );
+}
+
+/** "rgb(r, g, b)" -> "#rrggbb" (o null). */
+function toHex(css: string): string | null {
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(css);
+  return m ? '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('') : null;
 }

@@ -194,6 +194,7 @@ export const IPC = {
   moveGroup: 'callisto:move-group',
   answerPasswordOffer: 'callisto:answer-password-offer',
   answerExtensionInstall: 'callisto:answer-extension-install',
+  titleBarColors: 'callisto:title-bar-colors',
   extensionMenu: 'callisto:extension-menu',
   // principal -> interfaz
   state: 'callisto:state',
@@ -268,6 +269,8 @@ export interface CallistoUiApi {
   moveGroup(id: number, index: number): void;
   /** Respuesta a la oferta de guardar una contraseña ('save' puede llevar el usuario corregido). */
   answerPasswordOffer(id: number, answer: 'save' | 'never' | 'dismiss', username?: string): void;
+  /** Colores reales de la franja de pestañas (fondo y texto, #rrggbb) para los botones de ventana de Windows. */
+  setTitleBarColors(color: string, symbolColor: string): void;
   /** Respuesta a "¿Agregar la extensión?". */
   answerExtensionInstall(id: number, allow: boolean): void;
   /** Menú (clic derecho) del botón de una extensión. */

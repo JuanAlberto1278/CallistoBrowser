@@ -85,3 +85,25 @@ test('crear un tema propio, usarlo, que vuelva al reiniciar, editarlo y eliminar
   await expect(p.locator('[data-theme-id="system"]')).toHaveClass(/selected/);
   await expect.poll(nativeSource).toBe('system');
 });
+
+test('barra de título: las pestañas comparten fila con los botones de Windows, que toman los colores del tema', async () => {
+  // La franja arrastra la ventana; las pestañas y los botones, no
+  expect(await c.ui.evaluate(() => getComputedStyle(document.querySelector('.tabstrip-row')!).getPropertyValue('-webkit-app-region'))).toBe('drag');
+  expect(await c.ui.evaluate(() => getComputedStyle(document.querySelector('[data-testid="tab"]')!).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
+  expect(await c.ui.evaluate(() => getComputedStyle(document.querySelector('[data-testid="new-tab"]')!).getPropertyValue('-webkit-app-region'))).toBe('no-drag');
+  // Los colores que recibe Windows para sus botones
+  await c.app.evaluate(({ BaseWindow }) => {
+    const g = globalThis as unknown as { __overlay: unknown[] };
+    g.__overlay = [];
+    const original = BaseWindow.prototype.setTitleBarOverlay;
+    BaseWindow.prototype.setTitleBarOverlay = function (this: Electron.BaseWindow, o: Electron.TitleBarOverlayOptions) {
+      g.__overlay.push(o);
+      return original.call(this, o);
+    };
+  });
+  const p = await settingsPage();
+  await p.locator('[data-theme-id="midnight"] .theme-pick').click();
+  await expect
+    .poll(() => c.app.evaluate(() => JSON.stringify((globalThis as unknown as { __overlay: unknown[] }).__overlay.at(-1) ?? null)))
+    .toBe(JSON.stringify({ color: '#0f1626', symbolColor: '#e6ecff', height: 38 }));
+});

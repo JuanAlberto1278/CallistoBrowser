@@ -89,6 +89,10 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     const c = from(e);
     if (c && isId(id) && typeof index === 'number' && Number.isSafeInteger(index)) c.moveGroup(id, index);
   });
+  ipcMain.on(IPC.titleBarColors, (e, color: unknown, symbolColor: unknown) => {
+    const hex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+    if (hex(color) && hex(symbolColor)) from(e)?.applyTitleBar({ color, symbolColor });
+  });
   ipcMain.on(IPC.answerExtensionInstall, (e, id: unknown, allow: unknown) => {
     if (isId(id)) from(e)?.answerExtensionInstall(id, allow === true);
   });

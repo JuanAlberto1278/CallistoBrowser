@@ -171,6 +171,15 @@ html, body, #root {
 
 .tabstrip-row { flex-shrink: 0; background: var(--strip); }
 
+/*
+ * La franja de pestañas es la barra de título (como en Edge y Chrome): el espacio libre arrastra la ventana, el doble clic
+ * la maximiza y el clic derecho abre el menú de Windows. A la derecha quedan los botones de ventana de Windows.
+ */
+.tabstrip-row { -webkit-app-region: drag; padding-right: 138px; color: var(--fg); }
+.tabstrip-row .tab,
+.tabstrip-row .group-chip,
+.tabstrip-row button { -webkit-app-region: no-drag; }
+
 .tabstrip {
   height: 100%;
   display: flex;
