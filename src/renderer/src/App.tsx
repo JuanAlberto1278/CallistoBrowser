@@ -140,7 +140,6 @@ export function App() {
       className="chrome"
       data-private={!!state?.profile.private}
       data-testid="chrome"
-      style={state && state.profile.several && !state.profile.private ? { ['--profile-color' as string]: PROFILE_COLORS[state.profile.color].hex } : undefined}
       onMouseDown={() => {
         // Clic fuera del panel de descargas: se cierra (un pedido de autorización, en cambio, espera la respuesta)
         if (downloads?.panelOpen && !downloads.prompt) api.setDownloadsPanel(false);

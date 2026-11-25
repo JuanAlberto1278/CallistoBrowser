@@ -74,6 +74,9 @@ button, select, input {
 }
 
 .btn {
+  /* Una sola línea siempre (en una fila angosta se achica el texto de al lado, no el botón) */
+  white-space: nowrap;
+  flex-shrink: 0;
   height: 32px;
   padding: 0 14px;
   border-radius: 6px;

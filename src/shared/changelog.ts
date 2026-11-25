@@ -8,6 +8,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.1',
+    date: '2026-11-25',
+    items: [
+      'Ya no aparece la franja de color del perfil arriba de las pestañas (se veía cortada junto a los botones de la ventana). El perfil se sigue viendo en su botón y en el título de la ventana.',
+      'El botón «Administrador de tareas» de Configuración muestra su texto en una sola línea.',
+    ],
+  },
+  {
     version: '1.4.0',
     date: '2026-11-24',
     items: [

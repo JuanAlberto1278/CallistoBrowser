@@ -141,6 +141,10 @@ test('cambiar de perfil desde su botón, editar nombre y color, y ver el perfil 
   await captureMenus(c.app);
   const trabajo = await createProfile('Trabajo');
   await expectEventually(async () => (await c.app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().map((w) => w.getTitle()))).some((t) => t.endsWith('(Trabajo)')));
+  // Sin franja de color arriba de las pestañas (1.4.1: se veía cortada junto a los botones de Windows); el perfil se ve en
+  // su botón y en el título
+  expect(await trabajo.locator('.tabstrip-row').evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none');
+  await expect(trabajo.getByTestId('profile-button')).toBeVisible();
 
   await trabajo.getByTestId('profile-button').click();
   await expectEventually(async () => (await lastMenuLabels(c.app)).includes('Personal'));

@@ -638,9 +638,6 @@ html, body, #root {
 
 /* ---------------------------------------------------------------- perfiles y ventanas privadas */
 
-/* Con varios perfiles, una franja del color del perfil arriba de la ventana */
-.chrome[style*="--profile-color"] .tabstrip-row { box-shadow: inset 0 3px 0 var(--profile-color); }
-
 .profile-button {
   flex-shrink: 0;
   width: 28px;

@@ -97,7 +97,13 @@ test('Shift+Esc abre el Administrador de tareas (una sola ventana) con los proce
 test('el Administrador de tareas se cierra con la última ventana (Callisto sale)', async () => {
   c = await launchCallisto([], dir);
   const settings = await settingsPage();
-  await settings.getByTestId('open-task-manager').click();
+  // El texto del botón en una sola línea (1.4.1: se partía en dos y se salía del botón)
+  const button = settings.getByTestId('open-task-manager');
+  await expect(button).toBeVisible();
+  const box = (await button.boundingBox())!;
+  expect(box.height).toBeLessThanOrEqual(34);
+  expect(await button.evaluate((el) => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true);
+  await button.click();
   await taskManager();
   const exited = new Promise<void>((r) => c.app.process().once('exit', () => r()));
   await c.app.evaluate(({ BaseWindow }) => {
