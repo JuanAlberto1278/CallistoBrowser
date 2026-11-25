@@ -29,18 +29,16 @@ export interface ExtensionManifest {
  * APIs que una extensión puede pedir y que en Callisto NO están disponibles, con el motivo. Medido con la extensión
  * sonda (tests/fixtures/extensions/probe): el espacio de nombres no existe, o existe pero la llamada falla. Una prueba
  * end-to-end vuelve a medirlo y avisa si cambia. (1.4.2: historial, sesiones, búsqueda, borrar datos, identidad, MHTML,
- * proxy y pantallas pasaron a funcionar; ver CALLISTO_APIS.)
+ * proxy y pantallas pasaron a funcionar; 1.4.3: programas instalados, panel lateral y reglas según el contenido; ver
+ * CALLISTO_APIS.)
  */
 export const UNSUPPORTED_APIS: Record<string, string> = {
   contentSettings: 'cambiar permisos de sitios',
   debugger: 'depurar páginas',
-  declarativeContent: 'reglas según el contenido de la página',
   desktopCapture: 'capturar la pantalla',
   fontSettings: 'configuración de fuentes',
   gcm: 'mensajes push de Google (GCM)',
-  nativeMessaging: 'comunicarse con programas instalados en Windows',
   readingList: 'lista de lectura',
-  sidePanel: 'panel lateral',
   tabCapture: 'capturar pestañas',
   tts: 'texto a voz',
   ttsEngine: 'motor de texto a voz',
@@ -71,7 +69,7 @@ export const NOT_ON_WINDOWS_APIS = [
 ] as const;
 
 /** APIs que Callisto agrega sobre sus propios sistemas (no las trae Electron ni la librería). */
-export const CALLISTO_APIS = ['bookmarks', 'tabGroups', 'history', 'sessions', 'search', 'browsingData', 'identity', 'identity.email', 'pageCapture', 'proxy', 'system.display', 'downloads', 'topSites', 'omnibox'] as const;
+export const CALLISTO_APIS = ['bookmarks', 'tabGroups', 'history', 'sessions', 'search', 'browsingData', 'identity', 'identity.email', 'pageCapture', 'proxy', 'system.display', 'downloads', 'topSites', 'omnibox', 'nativeMessaging', 'sidePanel', 'declarativeContent'] as const;
 
 /** Permisos pedidos por la extensión que no están disponibles (los opcionales también cuentan). */
 export function unsupportedPermissions(manifest: ExtensionManifest): Array<{ permission: string; what: string; optional: boolean }> {

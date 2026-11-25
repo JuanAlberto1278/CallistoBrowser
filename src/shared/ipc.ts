@@ -138,7 +138,18 @@ export interface SuggestResult {
   inline: { completion: string; url: string } | null;
 }
 
+/** Encabezado del panel lateral de una extensión (lo dibuja callisto://ui/sidepanel.html). */
+export interface SidePanelState {
+  extensionId: string;
+  name: string;
+  icon: string | null;
+  width: number;
+  theme: ThemeVars;
+}
+
 export interface WindowState {
+  /** Ancho del panel lateral abierto (0 = cerrado): la página nueva deja ese espacio libre. */
+  sidePanelWidth: number;
   tabs: TabState[];
   activeTabId: number;
   /** Nombre del buscador configurado (para los textos de la barra). */
@@ -173,6 +184,9 @@ export const IPC = {
   reload: 'callisto:reload',
   stop: 'callisto:stop',
   dismissNotice: 'callisto:dismiss-notice',
+  sidePanelState: 'callisto:side-panel-state',
+  sidePanelClose: 'callisto:side-panel-close',
+  sidePanelResize: 'callisto:side-panel-resize',
   noticeAction: 'callisto:notice-action',
   sleepTab: 'callisto:sleep-tab',
   uiReady: 'callisto:ui-ready',
@@ -295,6 +309,11 @@ export interface CallistoUiApi {
   /** Ir a una pestaña abierta (de cualquier ventana del perfil). */
   switchToTab(id: number): void;
   onFocusTabSearch(cb: () => void): void;
+  /** Encabezado del panel lateral (solo en callisto://ui/sidepanel.html). */
+  onSidePanel(cb: (state: SidePanelState) => void): void;
+  closeSidePanel(): void;
+  /** Ancho nuevo del panel lateral (arrastrando su borde). */
+  resizeSidePanel(width: number): void;
   /** Botón de un aviso de la pestaña activa. */
   noticeAction(noticeId: number, action: NoticeAction): void;
   /** Dormir una pestaña (el ícono de "usa mucha CPU"). */

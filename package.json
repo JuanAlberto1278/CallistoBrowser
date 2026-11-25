@@ -1,7 +1,7 @@
 {
   "name": "callisto",
   "productName": "Callisto",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Callisto — navegador web de escritorio para Windows",
   "private": true,
   "main": "out/main/index.js",

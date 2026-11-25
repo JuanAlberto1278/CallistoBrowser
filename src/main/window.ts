@@ -12,7 +12,7 @@ import { matchShortcut, type ShortcutAction } from './shortcuts';
 import { closedLabel, type ClosedTabs, type TabSnapshot } from './closed-tabs';
 import { appMenuTemplate, pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
 import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
-import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type WindowState } from '../shared/ipc';
+import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type SidePanelState, type WindowState } from '../shared/ipc';
 import { BAR_FOLDER_ID, OTHER_FOLDER_ID, isBookmarkableUrl, type BookmarkEditorState, type BookmarkNode } from '../shared/bookmarks';
 import { bookmarkItemMenu, bookmarksSubmenu, folderMenu, nodesMenu } from './bookmark-menus';
 import type { ProfileInfo, WindowProfile } from '../shared/profiles';
@@ -112,6 +112,13 @@ export function savedFromSnapshot(s: TabSnapshot): SavedTab {
  * Ventana del navegador: la interfaz (pestañas, barra de herramientas, avisos, búsqueda) arriba y la pestaña activa
  * debajo. La interfaz corre en su propia sesión interna, separada de las páginas web.
  */
+/** Panel lateral de las extensiones: ancho por defecto y límites, encabezado y borde para cambiar el ancho. */
+const SIDE_PANEL_DEFAULT = 380;
+const SIDE_PANEL_MIN = 260;
+const SIDE_PANEL_MAX = 900;
+const SIDE_PANEL_HEADER = 40;
+const SIDE_PANEL_EDGE = 5;
+
 export class BrowserWindowController {
   static readonly all = new Set<BrowserWindowController>();
 
@@ -193,6 +200,7 @@ export class BrowserWindowController {
       titleBarStyle: 'hidden',
       titleBarOverlay: { ...this.titleBarColorsFor(ctx), height: TAB_STRIP_HEIGHT },
     });
+    this.winId = this.win.id;
     showWindow(this.win);
     if (opts.maximized) this.win.maximize();
 
@@ -264,6 +272,7 @@ export class BrowserWindowController {
       clearInterval(this.sleepTimer);
       this.extensionPrompt?.resolve(false);
       this.extensionPrompt = null;
+      this.closeSidePanel();
       for (const tab of this.tabs) {
         this.attached.get(tab)?.dispose();
         tab.destroy();
@@ -450,6 +459,13 @@ export class BrowserWindowController {
   activate(tab: Tab, opts: { focus?: FocusMode } = {}): void {
     if (!this.tabs.includes(tab)) return;
     tab.highCpu = false;
+    // Panel lateral con opciones por pestaña (chrome.sidePanel.setOptions con tabId): otra página, o se cierra
+    const panelExt = this.sidePanel?.extensionId;
+    if (panelExt) {
+      const path = this.ctx.profile.extensions?.browser?.sidePanelPath(panelExt, tab.webContents) ?? null;
+      if (path === null) this.closeSidePanel();
+      else this.openSidePanel(panelExt, path);
+    }
     // Activar una pestaña de un grupo contraído lo expande
     const g = tab.groupId !== null ? this.groups.get(tab.groupId) : undefined;
     if (g?.collapsed) g.collapsed = false;
@@ -771,7 +787,123 @@ export class BrowserWindowController {
     // La página de nueva pestaña la dibuja la interfaz: ocupa toda la ventana
     const uiHeight = tab?.showsNewTabPage ? height : Math.min(height, top + this.overlayHeight);
     this.ui.setBounds({ x: 0, y: 0, width, height: uiHeight });
-    tab?.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
+    const panel = this.sidePanel;
+    const panelWidth = panel ? this.sidePanelWidth(width) : 0;
+    tab?.view.setBounds({ x: 0, y: top, width: width - panelWidth, height: Math.max(0, height - top) });
+    if (panel) {
+      const h = Math.max(0, height - top);
+      panel.chrome.setBounds({ x: width - panelWidth, y: top, width: panelWidth, height: h });
+      panel.view.setBounds({ x: width - panelWidth + SIDE_PANEL_EDGE, y: top + SIDE_PANEL_HEADER, width: Math.max(0, panelWidth - SIDE_PANEL_EDGE), height: Math.max(0, h - SIDE_PANEL_HEADER) });
+      // Debajo de la interfaz (sus menús y paneles se ven encima), salvo con la página nueva, que ocupa toda la ventana
+      const onTop = !!tab?.showsNewTabPage && this.overlayHeight === 0;
+      if (onTop !== panel.onTop) {
+        panel.onTop = onTop;
+        for (const v of [panel.chrome, panel.view]) {
+          this.win.contentView.removeChildView(v);
+          if (onTop) this.win.contentView.addChildView(v);
+          else this.win.contentView.addChildView(v, this.win.contentView.children.indexOf(this.ui));
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- panel lateral de las extensiones (1.4.3)
+
+  /** Id de la ventana para las extensiones (se guarda: al cerrarse, la ventana ya no lo puede dar). */
+  private winId = -1;
+  private sidePanel: { extensionId: string; path: string; view: WebContentsView; chrome: WebContentsView; onTop: boolean } | null = null;
+
+  /** Ancho del panel: el elegido (se recuerda por perfil), sin dejar la página con menos de 320 px. */
+  private sidePanelWidth(windowWidth: number): number {
+    const saved = this.ctx.profile.kv.get<number>('sidePanel.width') ?? SIDE_PANEL_DEFAULT;
+    return Math.round(Math.max(SIDE_PANEL_MIN, Math.min(saved, windowWidth - 320, SIDE_PANEL_MAX)));
+  }
+
+  /** La extensión del panel abierto (o null). */
+  get sidePanelExtension(): string | null {
+    return this.sidePanel?.extensionId ?? null;
+  }
+
+  isSidePanelChrome(wc: WebContents): boolean {
+    return this.sidePanel?.chrome.webContents === wc;
+  }
+
+  /** Abre (o cambia) el panel lateral con una página de la extensión. */
+  openSidePanel(extensionId: string, path: string): void {
+    const url = `chrome-extension://${extensionId}/${path.replace(/^\/+/, '')}`;
+    if (this.sidePanel?.extensionId === extensionId) {
+      if (this.sidePanel.path !== path) {
+        this.sidePanel.path = path;
+        void this.sidePanel.view.webContents.loadURL(url);
+      }
+      return;
+    }
+    this.closeSidePanel();
+    const view = new WebContentsView({
+      webPreferences: { session: this.ctx.profile.session, sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false },
+    });
+    const chrome = new WebContentsView({
+      webPreferences: { session: this.ctx.uiSession, preload: this.ctx.uiPreload, sandbox: true, contextIsolation: true, nodeIntegration: false, webviewTag: false, spellcheck: false, devTools: !app.isPackaged },
+    });
+    const wc = view.webContents;
+    // Solo páginas de la extensión; lo que abre (enlaces, window.open) va a una pestaña
+    wc.setWindowOpenHandler(({ url: target }) => {
+      if (/^https?:/i.test(target)) this.newTab({ url: target });
+      return { action: 'deny' };
+    });
+    wc.on('will-navigate', (e) => {
+      if (e.url.startsWith(`chrome-extension://${extensionId}/`)) return;
+      e.preventDefault();
+      if (/^https?:/i.test(e.url)) this.newTab({ url: e.url });
+    });
+    wc.on('before-input-event', (e, input) => this.onInput(e, input, true));
+    chrome.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    chrome.webContents.on('will-navigate', (e) => e.preventDefault());
+    chrome.webContents.on('did-finish-load', () => this.sendSidePanelState());
+    this.sidePanel = { extensionId, path, view, chrome, onTop: false };
+    const below = this.win.contentView.children.indexOf(this.ui);
+    this.win.contentView.addChildView(chrome, below);
+    this.win.contentView.addChildView(view, below + 1);
+    void chrome.webContents.loadURL(new URL('sidepanel.html', this.ctx.uiUrl).href);
+    void wc.loadURL(url);
+    this.layout();
+    this.queueState();
+    this.ctx.profile.extensions?.browser?.sidePanelChanged(extensionId, this.winId, path, true);
+  }
+
+  closeSidePanel(): void {
+    const panel = this.sidePanel;
+    if (!panel) return;
+    this.sidePanel = null;
+    for (const v of [panel.view, panel.chrome]) {
+      if (!this.win.isDestroyed()) this.win.contentView.removeChildView(v);
+      if (!v.webContents.isDestroyed()) v.webContents.close();
+    }
+    this.layout();
+    this.queueState();
+    this.ctx.profile.extensions?.browser?.sidePanelChanged(panel.extensionId, this.winId, panel.path, false);
+  }
+
+  resizeSidePanel(width: number): void {
+    if (!this.sidePanel || !Number.isFinite(width)) return;
+    this.ctx.profile.kv.set('sidePanel.width', Math.round(Math.max(SIDE_PANEL_MIN, Math.min(width, SIDE_PANEL_MAX))));
+    this.layout();
+    this.sendSidePanelState();
+    this.queueState();
+  }
+
+  private sendSidePanelState(): void {
+    const panel = this.sidePanel;
+    if (!panel || panel.chrome.webContents.isDestroyed()) return;
+    const info = this.ctx.profile.extensions?.list().find((e) => e.id === panel.extensionId);
+    const state: SidePanelState = {
+      extensionId: panel.extensionId,
+      name: info?.name ?? panel.extensionId,
+      icon: info?.icon ?? null,
+      width: this.sidePanelWidth(this.win.getContentBounds().width),
+      theme: themeVars(this.ctx.profile.theme),
+    };
+    panel.chrome.webContents.send(IPC.sidePanelState, state);
   }
 
   /**
@@ -905,6 +1037,7 @@ export class BrowserWindowController {
       downloads: this.downloadsState(),
       bookmarks: this.bookmarksState(),
       theme: themeVars(this.ctx.profile.theme),
+      sidePanelWidth: this.sidePanel ? this.sidePanelWidth(this.win.getContentBounds().width) : 0,
       updateReady: updater.status.state === 'ready' ? updater.status.version : null,
       extensions: {
         // Sin extensiones en las ventanas privadas
@@ -1446,6 +1579,13 @@ export class BrowserWindowController {
     ]);
     if (own.length) {
       for (const item of own) menu.append(item);
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+    // Panel lateral de la extensión (si tiene)
+    const panelPath = ext.browser?.sidePanelPath(extensionId, this.activeTab.webContents) ?? null;
+    if (panelPath !== null || this.sidePanelExtension === extensionId) {
+      const open = this.sidePanelExtension === extensionId;
+      menu.append(new MenuItem({ label: open ? 'Cerrar el panel lateral' : 'Abrir el panel lateral', click: () => (open ? this.closeSidePanel() : panelPath && this.openSidePanel(extensionId, panelPath)) }));
       menu.append(new MenuItem({ type: 'separator' }));
     }
     for (const item of [

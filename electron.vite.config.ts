@@ -55,6 +55,8 @@ export default defineConfig({
           extensions: resolve(__dirname, 'src/renderer/extensions.html'),
           // Administrador de tareas (callisto://tasks, en su propia ventana)
           tasks: resolve(__dirname, 'src/renderer/tasks.html'),
+          // Encabezado del panel lateral de las extensiones (callisto://ui/sidepanel.html)
+          sidepanel: resolve(__dirname, 'src/renderer/sidepanel.html'),
           // Menú de sugerencias de contraseñas (callisto://ui/autofill.html)
           autofill: resolve(__dirname, 'src/renderer/autofill.html'),
         },

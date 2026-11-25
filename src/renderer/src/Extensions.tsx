@@ -6,9 +6,31 @@ import { WarningIcon } from './icons';
  * Botones de las extensiones del perfil, en la barra. Los dibuja <browser-action-list> de electron-chrome-extensions
  * (íconos, insignias y popups). El clic derecho abre el menú de Callisto (en español) en lugar del de la librería.
  */
+/**
+ * El botón de la librería no muestra si la extensión lo desactivó (chrome.action.disable): se agrega, leyendo el mismo
+ * estado que usa el botón (window.browserAction).
+ */
+function showDisabledActions(): void {
+  type ActionButton = HTMLElement & { tab: number; updateCallback(): void; __callisto?: boolean };
+  const Ctor = customElements.get('browser-action') as unknown as { prototype: ActionButton } | undefined;
+  if (!Ctor || Ctor.prototype.__callisto) return;
+  Ctor.prototype.__callisto = true;
+  const original = Ctor.prototype.updateCallback;
+  Ctor.prototype.updateCallback = function (this: ActionButton) {
+    original.call(this);
+    const action = (window as unknown as { browserAction?: { getAction(id: string): { enabled?: boolean; tabs?: Record<number, { enabled?: boolean }> } | undefined } }).browserAction?.getAction(this.id);
+    const tab = action?.tabs?.[this.tab];
+    const enabled = (tab && tab.enabled !== undefined ? tab.enabled : action?.enabled) !== false;
+    this.part.toggle('action-disabled', !enabled);
+    this.setAttribute('aria-disabled', String(!enabled));
+    this.dataset.enabled = String(enabled);
+  };
+}
+
 export function ExtensionActions({ partition }: { partition: string }) {
   const api = window.callisto;
   const ref = useRef<HTMLElement>(null);
+  showDisabledActions();
 
   useEffect(() => {
     const el = ref.current;

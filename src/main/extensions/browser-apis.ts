@@ -9,6 +9,8 @@ import { app, BrowserWindow, screen, webContents as allWebContents, type MenuIte
 import type { ExtensionManager } from './manager';
 import {
   browsingDataPlan,
+  cssSelectorsOf,
+  matchesPageState,
   shortcutOfInput,
   downloadDelta,
   manifestCommands,
@@ -51,12 +53,18 @@ export interface BrowserApis {
   actionMenuItems(extensionId: string): MenuItem[];
   /** Atajos asignados (para la página de extensiones). */
   commandsOf(extensionId: string): ExtensionCommand[];
+  /** Página del panel lateral de la extensión para esa pestaña (null: la extensión no tiene panel o está desactivado ahí). */
+  sidePanelPath(extensionId: string, tab: WebContents | null): string | null;
+  /** La ventana abrió o cerró el panel de la extensión (chrome.sidePanel.onOpened / onClosed). */
+  sidePanelChanged(extensionId: string, windowId: number, path: string, open: boolean): void;
 }
 
 type ApiEvent = { extension?: Electron.Extension; sender?: WebContents };
 type Handler = (event: ApiEvent, ...args: unknown[]) => unknown;
 
 const OMNIBOX_WAIT_MS = 400;
+/** Mundo aislado donde Callisto busca los selectores CSS de las reglas (la página no lo ve ni lo puede alterar). */
+const DC_WORLD = 1430;
 
 export function registerBrowserApis(manager: ExtensionManager, deps: BrowserApiDeps): BrowserApis {
   const profile = manager.profile;
@@ -156,6 +164,151 @@ export function registerBrowserApis(manager: ExtensionManager, deps: BrowserApiD
   });
 
   // ------------------------------------------------------------ chrome.contextMenus.update (la librería no la tiene)
+
+  // ------------------------------------------------------------ action.enable / disable / isEnabled (1.4.3)
+
+  const actions = lib.api.browserAction as unknown as {
+    getAction(id: string): { enabled?: boolean; tabs: Record<number, { enabled?: boolean }> };
+    onUpdate(): void;
+    activateClick(details: { extensionId: string; tabId: number }): void;
+  };
+  // El estado general (sin pestaña) se recuerda, como en Chrome: la extensión suele desactivar su botón una sola vez, al
+  // instalarse, y mostrarlo con reglas según el contenido
+  const ACTION_KEY = 'action.disabled';
+  const disabledActions = new Set(profile.kv.get<string[]>(ACTION_KEY) ?? []);
+  const setEnabled = (extensionId: string, tabId: unknown, enabled: boolean) => {
+    const action = actions.getAction(extensionId);
+    if (typeof tabId === 'number') action.tabs[tabId] = { ...(action.tabs[tabId] ?? {}), enabled };
+    else {
+      action.enabled = enabled;
+      if (enabled) disabledActions.delete(extensionId);
+      else disabledActions.add(extensionId);
+      profile.kv.set(ACTION_KEY, [...disabledActions]);
+    }
+    actions.onUpdate();
+  };
+  profile.session.extensions.on('extension-loaded', (_e, extension) => {
+    if (!disabledActions.has(extension.id)) return;
+    // Después de que la librería cargue los valores del manifiesto
+    setImmediate(() => {
+      actions.getAction(extension.id).enabled = false;
+      actions.onUpdate();
+    });
+  });
+  const isActionEnabled = (extensionId: string, tabId: number | null) => {
+    const action = actions.getAction(extensionId);
+    const tab = tabId !== null ? action.tabs[tabId] : undefined;
+    return (tab && tab.enabled !== undefined ? tab.enabled : action.enabled) !== false;
+  };
+  handle('browserAction.enable', ({ extension }, tabId) => setEnabled(extension!.id, tabId, true));
+  handle('browserAction.disable', ({ extension }, tabId) => setEnabled(extension!.id, tabId, false));
+  handle('browserAction.isEnabled', ({ extension }, tabId) => isActionEnabled(extension!.id, typeof tabId === 'number' ? tabId : null));
+  // Un botón desactivado no hace nada al tocarlo (ni popup ni onClicked), como en Chrome
+  {
+    const activate = actions.activateClick.bind(actions);
+    actions.activateClick = (details) => {
+      if (!isActionEnabled(details.extensionId, typeof details.tabId === 'number' ? details.tabId : null)) return;
+      activate(details);
+    };
+  }
+
+  // ------------------------------------------------------------ chrome.declarativeContent (1.4.3)
+  // Reglas "mostrar el botón en estas páginas" (ShowAction): se guardan por perfil, como en Chrome, y cada página se
+  // revisa al cargar (dirección, selectores CSS en un mundo aislado, si es favorito).
+
+  type DcRule = { id: string; priority?: number; conditions: unknown[]; actions: Array<{ instanceType?: unknown }> };
+  const DC_KEY = 'declarativeContent.rules';
+  const dcRules = new Map<string, DcRule[]>(Object.entries(profile.kv.get<Record<string, DcRule[]>>(DC_KEY) ?? {}));
+  const saveDcRules = () => profile.kv.set(DC_KEY, Object.fromEntries(dcRules));
+  let dcSeq = 0;
+  /** Pestañas donde Callisto activó el botón por una regla (para volver atrás si deja de cumplirse). */
+  const dcShown = new Set<string>();
+  const SHOW = new Set(['declarativeContent.ShowAction', 'declarativeContent.ShowPageAction']);
+
+  /** Revisión más reciente de cada pestaña: una anterior que termina tarde (la página ya cambió) no se aplica. */
+  const dcLatest = new Map<number, number>();
+  let dcCheck = 0;
+  const evaluatePage = async (wc: WebContents) => {
+    if (wc.isDestroyed() || !Tab.fromWebContents(wc)) return;
+    const withRules = [...dcRules].filter(([id, rules]) => rules.length && extensionOf(id));
+    if (!withRules.length) return;
+    const check = ++dcCheck;
+    dcLatest.set(wc.id, check);
+    const url = wc.getURL();
+    const selectors = cssSelectorsOf(withRules.flatMap(([, r]) => r));
+    let found: string[] = [];
+    if (selectors.length && /^https?:/i.test(url)) {
+      const code = `(${JSON.stringify(selectors)}).filter((s) => { try { return !!document.querySelector(s); } catch { return false; } })`;
+      found = await wc.executeJavaScriptInIsolatedWorld(DC_WORLD, [{ code }]).catch(() => []);
+    }
+    if (wc.isDestroyed() || dcLatest.get(wc.id) !== check || wc.getURL() !== url) return;
+    const facts = { url, css: new Set(Array.isArray(found) ? found : []), bookmarked: !!profile.bookmarks.findByUrl(url) };
+    for (const [extensionId, rules] of withRules) {
+      const show = rules.some((r) => r.actions.some((a) => SHOW.has(String(a.instanceType))) && r.conditions.some((c) => matchesPageState(c, facts)));
+      const key = `${extensionId}:${wc.id}`;
+      const action = actions.getAction(extensionId);
+      if (show) {
+        action.tabs[wc.id] = { ...(action.tabs[wc.id] ?? {}), enabled: true };
+        dcShown.add(key);
+      } else if (dcShown.delete(key) && action.tabs[wc.id]) {
+        delete action.tabs[wc.id]!.enabled;
+      }
+    }
+    actions.onUpdate();
+  };
+  const evaluateAll = () => {
+    for (const w of deps.windows()) for (const t of w.tabs) if (!t.isPending && !t.webContents.isDestroyed()) void evaluatePage(t.webContents);
+  };
+  app.on('web-contents-created', (_e, wc) => {
+    if (wc.session !== profile.session) return;
+    const run = () => {
+      if (dcRules.size) void evaluatePage(wc);
+    };
+    wc.on('did-navigate', run);
+    wc.on('did-navigate-in-page', run);
+    // Al terminar de cargar, y un poco después (las páginas que arman su contenido con JavaScript)
+    wc.on('did-finish-load', () => {
+      run();
+      setTimeout(run, 1500).unref();
+    });
+  });
+  // Al quitar una extensión se olvidan sus reglas y el estado de su botón (como en Chrome al desinstalar)
+  manager.on('changed', () => {
+    const installed = new Set(manager.registry.all().map((r) => r.id));
+    let dirty = false;
+    for (const id of [...dcRules.keys()]) if (!installed.has(id)) dirty = dcRules.delete(id) || dirty;
+    if (dirty) saveDcRules();
+    const before = disabledActions.size;
+    for (const id of [...disabledActions]) if (!installed.has(id)) disabledActions.delete(id);
+    if (disabledActions.size !== before) profile.kv.set(ACTION_KEY, [...disabledActions]);
+  });
+  handle('declarativeContent.addRules', ({ extension }, rules) => {
+    const list = (Array.isArray(rules) ? rules : []).slice(0, 1000).map((r) => {
+      const rule = (r ?? {}) as Partial<DcRule>;
+      return {
+        id: typeof rule.id === 'string' && rule.id ? rule.id : `_${++dcSeq}_`,
+        ...(typeof rule.priority === 'number' ? { priority: rule.priority } : {}),
+        conditions: Array.isArray(rule.conditions) ? rule.conditions : [],
+        actions: Array.isArray(rule.actions) ? (rule.actions as DcRule['actions']) : [],
+      };
+    });
+    const existing = (dcRules.get(extension!.id) ?? []).filter((r) => !list.some((n) => n.id === r.id));
+    dcRules.set(extension!.id, [...existing, ...list]);
+    saveDcRules();
+    evaluateAll();
+    return list;
+  }, 'declarativeContent');
+  handle('declarativeContent.removeRules', ({ extension }, ids) => {
+    const id = extension!.id;
+    if (Array.isArray(ids)) dcRules.set(id, (dcRules.get(id) ?? []).filter((r) => !ids.includes(r.id)));
+    else dcRules.delete(id);
+    saveDcRules();
+    evaluateAll();
+  }, 'declarativeContent');
+  handle('declarativeContent.getRules', ({ extension }, ids) => {
+    const rules = dcRules.get(extension!.id) ?? [];
+    return Array.isArray(ids) ? rules.filter((r) => ids.includes(r.id)) : rules;
+  }, 'declarativeContent');
 
   handle('contextMenus.update', ({ extension }, menuId, changes) => {
     const menus = (lib.api as unknown as { contextMenus: { menus: Map<string, Map<string | number, Record<string, unknown>>> } }).contextMenus.menus;
@@ -594,6 +747,90 @@ export function registerBrowserApis(manager: ExtensionManager, deps: BrowserApiD
     return null;
   };
 
+  // ------------------------------------------------------------ chrome.sidePanel (1.4.3)
+
+  type PanelOptions = { path?: string; enabled?: boolean };
+  const panelOptions = new Map<string, PanelOptions>();
+  const panelTabOptions = new Map<string, PanelOptions>();
+  const panelBehavior = new Map<string, { openPanelOnActionClick: boolean }>();
+  const panelDefault = (ext: Electron.Extension | undefined) => {
+    const p = (ext?.manifest as { side_panel?: { default_path?: unknown } } | undefined)?.side_panel?.default_path;
+    return typeof p === 'string' && !p.includes('..') ? p : undefined;
+  };
+  const panelPath = (extensionId: string, tabId: number | null): string | null => {
+    const ext = extensionOf(extensionId);
+    if (!ext) return null;
+    const global = panelOptions.get(extensionId) ?? {};
+    const tab = tabId !== null ? (panelTabOptions.get(`${extensionId}:${tabId}`) ?? {}) : {};
+    const enabled = tab.enabled ?? global.enabled ?? true;
+    const path = tab.path ?? global.path ?? panelDefault(ext);
+    return enabled && path ? path : null;
+  };
+  const panelWindow = (o: { windowId?: unknown; tabId?: unknown }) => {
+    if (typeof o.tabId === 'number') return { win: findTab(o.tabId).win, tabId: o.tabId };
+    const win = windowById(o.windowId);
+    if (!win) throw new Error(`No window with id: ${String(o.windowId)}.`);
+    return { win, tabId: win.active.webContents.id };
+  };
+  const validPath = (p: unknown) => {
+    if (p === undefined) return undefined;
+    if (typeof p !== 'string' || p.includes('..') || p.length > 500) throw new Error('Invalid path.');
+    return p.replace(/^\/+/, '');
+  };
+  handle('sidePanel.getOptions', ({ extension }, o) => {
+    const tabId = (o as { tabId?: unknown } | undefined)?.tabId;
+    const id = extension!.id;
+    const opts = typeof tabId === 'number' ? { ...(panelOptions.get(id) ?? {}), ...(panelTabOptions.get(`${id}:${tabId}`) ?? {}) } : (panelOptions.get(id) ?? {});
+    return { enabled: opts.enabled ?? true, path: opts.path ?? panelDefault(extension), ...(typeof tabId === 'number' ? { tabId } : {}) };
+  }, 'sidePanel');
+  handle('sidePanel.setOptions', ({ extension }, o) => {
+    const opts = (o ?? {}) as { tabId?: unknown; path?: unknown; enabled?: unknown };
+    const id = extension!.id;
+    const patch: PanelOptions = {};
+    const path = validPath(opts.path);
+    if (path !== undefined) patch.path = path;
+    if (typeof opts.enabled === 'boolean') patch.enabled = opts.enabled;
+    if (typeof opts.tabId === 'number') panelTabOptions.set(`${id}:${opts.tabId}`, { ...(panelTabOptions.get(`${id}:${opts.tabId}`) ?? {}), ...patch });
+    else panelOptions.set(id, { ...(panelOptions.get(id) ?? {}), ...patch });
+    // Si el panel de la extensión está abierto, se actualiza (otra página, o se cierra si quedó desactivado)
+    for (const w of deps.windows()) {
+      if (w.sidePanelExtension !== id) continue;
+      const p = panelPath(id, w.active.webContents.id);
+      if (p === null) w.closeSidePanel();
+      else w.openSidePanel(id, p);
+    }
+  }, 'sidePanel');
+  handle('sidePanel.setPanelBehavior', ({ extension }, b) => {
+    const open = (b as { openPanelOnActionClick?: unknown } | undefined)?.openPanelOnActionClick;
+    if (typeof open === 'boolean') panelBehavior.set(extension!.id, { openPanelOnActionClick: open });
+  }, 'sidePanel');
+  handle('sidePanel.getPanelBehavior', ({ extension }) => panelBehavior.get(extension!.id) ?? { openPanelOnActionClick: false }, 'sidePanel');
+  handle('sidePanel.open', ({ extension }, o) => {
+    const { win, tabId } = panelWindow((o ?? {}) as { windowId?: unknown; tabId?: unknown });
+    const path = panelPath(extension!.id, tabId);
+    if (!path) throw new Error('No active side panel for the tab.');
+    win.openSidePanel(extension!.id, path);
+  }, 'sidePanel');
+  handle('sidePanel.close', ({ extension }, o) => {
+    const { win } = panelWindow((o ?? {}) as { windowId?: unknown; tabId?: unknown });
+    if (win.sidePanelExtension === extension!.id) win.closeSidePanel();
+  }, 'sidePanel');
+  // El botón de la extensión abre su panel si así lo pidió (openPanelOnActionClick)
+  const browserAction = lib.api.browserAction as unknown as { activateClick(details: { extensionId: string; tabId: number }): void };
+  const activateClick = browserAction.activateClick.bind(browserAction);
+  browserAction.activateClick = (details) => {
+    if (panelBehavior.get(details.extensionId)?.openPanelOnActionClick) {
+      const win = deps.windows().find((w) => w.tabs.some((t) => !t.webContents.isDestroyed() && t.webContents.id === details.tabId)) ?? deps.current();
+      const path = win ? panelPath(details.extensionId, details.tabId) : null;
+      if (win && path) {
+        if (win.sidePanelExtension === details.extensionId) win.closeSidePanel();
+        else win.openSidePanel(details.extensionId, path);
+        return;
+      }
+    }
+    activateClick(details);
+  };
+
   // ------------------------------------------------------------ runtime.onInstalled / onStartup
 
   const pendingLifecycle = new Map<string, { event: 'runtime.onInstalled' | 'runtime.onStartup'; args: unknown[] }[]>();
@@ -716,6 +953,14 @@ export function registerBrowserApis(manager: ExtensionManager, deps: BrowserApiD
 
     commandsOf(extensionId) {
       return commands.get(extensionId) ?? [];
+    },
+
+    sidePanelPath(extensionId, tab) {
+      return panelPath(extensionId, tab && !tab.isDestroyed() ? tab.id : null);
+    },
+
+    sidePanelChanged(extensionId, windowId, path, open) {
+      routerInternals.sendEvent(extensionId, open ? 'sidePanel.onOpened' : 'sidePanel.onClosed', { windowId, path });
     },
   };
 }

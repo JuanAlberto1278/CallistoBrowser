@@ -217,7 +217,12 @@ export function App() {
       )}
       {tab?.permission && <PermissionBar key={tab.permission.id} prompt={tab.permission} />}
       {tab?.find && <FindBar tabId={tab.id} find={tab.find} focusSignal={findSignal} focusHandled={findHandled} />}
-      {tab?.newTabPage && <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} isPrivate={!!state?.profile.private} />}
+      {tab?.newTabPage && (
+        // Con el panel lateral abierto, la página nueva deja libre su espacio a la derecha
+        <div className="ntp-area" style={{ marginRight: state?.sidePanelWidth ?? 0 }}>
+          <NewTabPage tabId={tab.id} searchEngine={state?.searchEngine ?? 'Google'} isPrivate={!!state?.profile.private} />
+        </div>
+      )}
       {state?.groupEditor != null && state.groups.some((g) => g.id === state.groupEditor) && (
         <GroupEditor group={state.groups.find((g) => g.id === state.groupEditor)!} top={TAB_STRIP_HEIGHT - 2} onBottom={reportGroup} />
       )}

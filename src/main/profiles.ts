@@ -4,6 +4,7 @@ import { webContents, type BaseWindow, type Session, type WebContents } from 'el
 import { ExtensionManager, type ExtensionHost } from './extensions/manager';
 import { registerCallistoApis } from './extensions/callisto-apis';
 import { registerBrowserApis } from './extensions/browser-apis';
+import { registerNativeMessaging } from './extensions/native-messaging';
 import { matchShortcut } from './shortcuts';
 import { Profile, type InternalPages } from './profile';
 import { ProfileRegistry } from './profile-registry';
@@ -112,6 +113,8 @@ export class ProfileManager implements ProfilesApi {
       newWindow: (url) => void new BrowserWindowController(this.runtime(profile.id).ctx, { url }),
       isBrowserShortcut,
     });
+    // Programas instalados (1.4.3): se pregunta la primera vez
+    registerNativeMessaging(extensions, { parentWindow: () => this.windowFor(profile, null)?.win ?? null });
     const rt: Runtime = { ctx: this.makeContext(profile, closedTabs, saver), saver, store, noticeShown: false };
     this.runtimes.set(id, rt);
     return rt;

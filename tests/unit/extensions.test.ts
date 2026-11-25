@@ -278,8 +278,8 @@ describe('permisos y compatibilidad (en palabras)', () => {
   });
 
   it('lo que falta en Callisto, requerido u opcional', () => {
-    expect(unsupportedPermissions({ permissions: ['storage', 'sidePanel', 'identity'], optional_permissions: ['userScripts', 'sidePanel'] })).toEqual([
-      { permission: 'sidePanel', what: 'panel lateral', optional: false },
+    expect(unsupportedPermissions({ permissions: ['storage', 'tts', 'identity'], optional_permissions: ['userScripts', 'tts'] })).toEqual([
+      { permission: 'tts', what: 'texto a voz', optional: false },
       { permission: 'userScripts', what: 'scripts de usuario', optional: true },
     ]);
     // identity funciona desde la 1.4.2 (launchWebAuthFlow)

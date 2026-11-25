@@ -81,6 +81,12 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   ipcMain.on(IPC.dismissNotice, (e, id: unknown) => {
     if (typeof id === 'number') from(e)?.active.dismissNotice(id);
   });
+  // Encabezado del panel lateral (su propia vista): cerrar y cambiar el ancho
+  const panelOf = (e: IpcMainEvent) => [...BrowserWindowController.all].find((w) => w.isSidePanelChrome(e.sender));
+  ipcMain.on(IPC.sidePanelClose, (e) => panelOf(e)?.closeSidePanel());
+  ipcMain.on(IPC.sidePanelResize, (e, width: unknown) => {
+    if (typeof width === 'number') panelOf(e)?.resizeSidePanel(width);
+  });
   ipcMain.on(IPC.noticeAction, (e, id: unknown, action: unknown) => {
     if (typeof id === 'number' && (action === 'wait' || action === 'stop')) from(e)?.active.noticeAction(id, action);
   });

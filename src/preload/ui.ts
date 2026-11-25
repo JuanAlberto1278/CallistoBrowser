@@ -56,6 +56,11 @@ const api: CallistoUiApi = {
   onFocusTabSearch: (cb) => {
     ipcRenderer.on(IPC.focusTabSearch, () => cb());
   },
+  onSidePanel: (cb) => {
+    ipcRenderer.on(IPC.sidePanelState, (_e, state) => cb(state));
+  },
+  closeSidePanel: () => ipcRenderer.send(IPC.sidePanelClose),
+  resizeSidePanel: (width) => ipcRenderer.send(IPC.sidePanelResize, Number(width)),
   noticeAction: (noticeId, action) => ipcRenderer.send(IPC.noticeAction, Number(noticeId), String(action)),
   sleepTab: (id) => ipcRenderer.send(IPC.sleepTab, Number(id)),
   toggleMute: (id) => ipcRenderer.send(IPC.toggleMute, Number(id)),

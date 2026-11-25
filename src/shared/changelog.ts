@@ -8,6 +8,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.3',
+    date: '2026-11-25',
+    items: [
+      'Panel lateral de las extensiones (Bitwarden, Grammarly…): a la derecha de la página, con su ancho ajustable. Se abre desde el botón de la extensión (clic derecho → «Abrir el panel lateral») o cuando la extensión lo pide.',
+      'Las extensiones pueden comunicarse con programas instalados (por ejemplo KeePassXC o la app de escritorio de Bitwarden). La primera vez Callisto te pregunta, y muestra qué programa se va a abrir.',
+      'Las extensiones que muestran su botón solo en ciertas páginas ahora funcionan: el botón aparece desactivado donde no corresponde.',
+    ],
+  },
+  {
     version: '1.4.2',
     date: '2026-11-25',
     items: [

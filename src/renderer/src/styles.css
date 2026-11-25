@@ -875,3 +875,16 @@ browser-action-list.extension-actions::part(badge) { font: 600 9px/1 "Segoe UI",
 .tab-cpu:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .tab.pinned.has-cpu { flex-basis: 62px; }
 .tab.pinned.has-cpu.has-audio { flex-basis: 84px; }
+
+/* Panel lateral de una extensión (callisto://ui/sidepanel.html): borde para cambiar el ancho y encabezado (1.4.3) */
+.side-panel { position: fixed; inset: 0; background: var(--bg); border-left: 1px solid var(--border); }
+.side-panel-edge { position: absolute; top: 0; bottom: 0; left: 0; width: 5px; cursor: col-resize; }
+.side-panel-edge:hover, .side-panel-edge:active { background: var(--focus); opacity: 0.5; }
+.side-panel-head { position: absolute; top: 0; left: 5px; right: 0; height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--border); }
+.side-panel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.side-panel-noicon { width: 16px; height: 16px; border-radius: 4px; background: var(--active); }
+
+/* Botón de una extensión desactivado (chrome.action.disable) */
+browser-action-list.extension-actions::part(action-disabled) { opacity: 0.4; }
+/* La página nueva dentro de su área (que deja libre el lugar del panel lateral) */
+.ntp-area { flex: 1; min-height: 0; display: flex; flex-direction: column; }

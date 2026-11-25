@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: herramientas de prueba",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto (1.4.3): panel lateral, reglas según el contenido y programas instalados.",
+  "permissions": ["sidePanel", "declarativeContent", "nativeMessaging", "storage", "tabs"],
+  "background": { "service_worker": "sw.js" },
+  "action": { "default_title": "Herramientas" },
+  "side_panel": { "default_path": "panel.html" }
+}

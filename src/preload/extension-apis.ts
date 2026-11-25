@@ -30,6 +30,27 @@ const bridge = {
   removeListener: (name: string, cb: (...args: unknown[]) => void) => {
     listeners.get(name)?.delete(cb);
   },
+  /** Puerto con un programa instalado (1.4.3), con el protocolo de mensajes de electron-chrome-extensions. */
+  nativeConnect: (extensionId: string, application: string, onMessage: (m: unknown) => void, onDisconnect: (reason: string | null) => void) => {
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const channel = `crx-native-msg-${id}`;
+    const receive = (_e: unknown, message: unknown) => onMessage(message);
+    const ended = (_e: unknown, reason?: unknown) => {
+      ipcRenderer.off(channel, receive);
+      onDisconnect(typeof reason === 'string' ? reason : null);
+    };
+    ipcRenderer.on(channel, receive);
+    ipcRenderer.once(`${channel}-disconnect`, ended);
+    void ipcRenderer.invoke('crx-msg', extensionId, 'runtime.connectNative', id, application).catch((e: unknown) => ended(null, String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']*': (Error: )?/, '')));
+    return {
+      post: (message: unknown) => ipcRenderer.send(channel, message),
+      close: () => {
+        ipcRenderer.off(channel, receive);
+        ipcRenderer.removeAllListeners(`${channel}-disconnect`);
+        void ipcRenderer.invoke('crx-msg', extensionId, 'runtime.disconnectNative', id).catch(() => {});
+      },
+    };
+  },
 };
 
 type Bridge = typeof bridge;
@@ -174,11 +195,16 @@ function mainWorld(b: Bridge): void {
   // El preload de electron-chrome-extensions corre después de este, redefine algunos espacios de nombres con funciones
   // que no hacen nada y responden como si hubieran funcionado (downloads, topSites, contextMenus.update) y termina con
   // Object.freeze(chrome). Lo que esté en `late` se vuelve a poner justo antes de ese freeze.
+  // También cada vez que la librería define una API en `chrome` (no depende de que llegue al freeze: medido en 1.4.3, en
+  // los service workers el arreglo no se aplicaba solo con el freeze).
   const late: Array<() => void> = [];
   const nativeFreeze = Object.freeze;
-  Object.freeze = function <T>(o: T): Readonly<T> {
-    if ((o as unknown) === chrome) {
-      Object.freeze = nativeFreeze;
+  const nativeDefine = Object.defineProperty;
+  let applying = false;
+  const applyLate = () => {
+    if (applying) return;
+    applying = true;
+    try {
       for (const f of late) {
         try {
           f();
@@ -186,9 +212,78 @@ function mainWorld(b: Bridge): void {
           console.error('callisto: APIs de extensiones', e);
         }
       }
+    } finally {
+      applying = false;
+    }
+  };
+  Object.defineProperty = function <T>(o: T, key: PropertyKey, attributes: PropertyDescriptor & ThisType<unknown>): T {
+    const result = nativeDefine(o, key, attributes);
+    if ((o as unknown) === chrome) applyLate();
+    return result;
+  } as typeof Object.defineProperty;
+  Object.freeze = function <T>(o: T): Readonly<T> {
+    if ((o as unknown) === chrome) {
+      Object.freeze = nativeFreeze;
+      Object.defineProperty = nativeDefine;
+      applyLate();
     }
     return nativeFreeze(o);
   } as typeof Object.freeze;
+  if (has('nativeMessaging')) {
+    // Los de la librería convierten los errores en `undefined` y avisan onDisconnect también a quien cerró el puerto:
+    // estos se comportan como Chrome (el motivo en runtime.lastError, solo cuando cierra el otro lado)
+    const connectNative = (application: unknown) => {
+      const listenersOf = () => {
+        const fns = new Set<(...a: unknown[]) => void>();
+        return {
+          fns,
+          addListener: (fn: (...a: unknown[]) => void) => void fns.add(fn),
+          removeListener: (fn: (...a: unknown[]) => void) => void fns.delete(fn),
+          hasListener: (fn: (...a: unknown[]) => void) => fns.has(fn),
+          hasListeners: () => fns.size > 0,
+        };
+      };
+      const onMessage = listenersOf();
+      const onDisconnect = listenersOf();
+      let open = true;
+      const port = {
+        name: String(application),
+        onMessage,
+        onDisconnect,
+        postMessage(message: unknown) {
+          if (!open) throw new Error('Attempting to use a disconnected port object');
+          handle.post(message);
+        },
+        disconnect() {
+          if (!open) return;
+          open = false;
+          handle.close();
+        },
+      };
+      const handle = b.nativeConnect(
+        id,
+        String(application),
+        (message) => onMessage.fns.forEach((f) => f(message, port)),
+        (reason) => {
+          if (!open) return;
+          open = false;
+          const rt = chrome.runtime as Record<string, unknown>;
+          try {
+            if (reason) Object.defineProperty(rt, 'lastError', { value: { message: reason }, configurable: true });
+            onDisconnect.fns.forEach((f) => f(port));
+          } finally {
+            delete rt.lastError;
+          }
+        },
+      );
+      return port;
+    };
+    late.push(() => {
+      const rt = chrome.runtime as Record<string, unknown> | undefined;
+      def(rt, 'sendNativeMessage', call('runtime.sendNativeMessage'));
+      def(rt, 'connectNative', connectNative);
+    });
+  }
   late.push(() => {
     const menus = chrome.contextMenus as Record<string, unknown> | undefined;
     if (menus) def(menus, 'update', call('contextMenus.update'));
@@ -270,6 +365,47 @@ function mainWorld(b: Bridge): void {
     def(chrome, 'topSites', topSites);
     late.push(() => def(chrome, 'topSites', topSites));
   }
+  // ---- 1.4.3
+  if (has('sidePanel')) {
+    def(chrome, 'sidePanel', {
+      getOptions: call('sidePanel.getOptions'),
+      setOptions: call('sidePanel.setOptions'),
+      getPanelBehavior: call('sidePanel.getPanelBehavior'),
+      setPanelBehavior: call('sidePanel.setPanelBehavior'),
+      open: call('sidePanel.open'),
+      close: call('sidePanel.close'),
+      onOpened: event('sidePanel.onOpened'),
+      onClosed: event('sidePanel.onClosed'),
+    });
+  }
+  if (has('declarativeContent')) {
+    // Las condiciones y acciones se crean con `new`: llevan su tipo en instanceType (como en Chrome)
+    const kind = (instanceType: string) =>
+      function (this: Record<string, unknown>, options?: Record<string, unknown>) {
+        Object.assign(this, options ?? {});
+        this.instanceType = instanceType;
+      } as unknown as new (options?: Record<string, unknown>) => Record<string, unknown>;
+    def(chrome, 'declarativeContent', {
+      PageStateMatcher: kind('declarativeContent.PageStateMatcher'),
+      ShowAction: kind('declarativeContent.ShowAction'),
+      ShowPageAction: kind('declarativeContent.ShowPageAction'),
+      SetIcon: kind('declarativeContent.SetIcon'),
+      RequestContentScript: kind('declarativeContent.RequestContentScript'),
+      onPageChanged: {
+        addRules: call('declarativeContent.addRules'),
+        removeRules: call('declarativeContent.removeRules'),
+        getRules: call('declarativeContent.getRules'),
+      },
+    });
+  }
+  // action.enable / disable / isEnabled: la librería las deja sin efecto; Callisto las implementa (botón desactivado)
+  late.push(() => {
+    const action = chrome.action as Record<string, unknown> | undefined;
+    if (!action) return;
+    def(action, 'enable', call('browserAction.enable'));
+    def(action, 'disable', call('browserAction.disable'));
+    def(action, 'isEnabled', call('browserAction.isEnabled'));
+  });
   if (manifest.omnibox && typeof manifest.omnibox.keyword === 'string') {
     // onInputChanged recibe (texto, suggest): suggest devuelve las sugerencias a la barra de Callisto
     def(chrome, 'omnibox', {

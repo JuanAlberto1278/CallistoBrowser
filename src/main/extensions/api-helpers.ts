@@ -309,3 +309,86 @@ export function browsingDataPlan(options: unknown, dataToRemove: unknown): Brows
   if (storage.length && since > 0) throw new Error('Callisto solo puede borrar cookies y datos de sitios de todo el período (since: 0).');
   return { history: on('history'), downloads: on('downloads'), storage, cache: on('cache') || on('cacheStorage') };
 }
+
+// ---------------------------------------------------------------- chrome.declarativeContent (1.4.3)
+
+/** Filtro de dirección de chrome.events.UrlFilter. Todas las condiciones que trae tienen que cumplirse. */
+export function matchesUrlFilter(url: string, filter: unknown): boolean {
+  const f = (filter ?? {}) as Record<string, unknown>;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  const host = u.hostname.toLowerCase();
+  const path = u.pathname;
+  const query = u.search.replace(/^\?/, '');
+  const full = u.href;
+  const str = (k: string) => (typeof f[k] === 'string' ? (f[k] as string) : null);
+  const checks: Array<[string, (v: string) => boolean]> = [
+    ['hostEquals', (v) => host === v.toLowerCase()],
+    ['hostContains', (v) => `.${host}`.includes(v.toLowerCase())],
+    ['hostPrefix', (v) => host.startsWith(v.toLowerCase())],
+    ['hostSuffix', (v) => host.endsWith(v.toLowerCase())],
+    ['pathEquals', (v) => path === v],
+    ['pathContains', (v) => path.includes(v)],
+    ['pathPrefix', (v) => path.startsWith(v)],
+    ['pathSuffix', (v) => path.endsWith(v)],
+    ['queryEquals', (v) => query === v],
+    ['queryContains', (v) => query.includes(v)],
+    ['queryPrefix', (v) => query.startsWith(v)],
+    ['querySuffix', (v) => query.endsWith(v)],
+    ['urlEquals', (v) => full === v],
+    ['urlContains', (v) => full.includes(v)],
+    ['urlPrefix', (v) => full.startsWith(v)],
+    ['urlSuffix', (v) => full.endsWith(v)],
+  ];
+  for (const [key, test] of checks) {
+    const v = str(key);
+    if (v !== null && !test(v)) return false;
+  }
+  for (const key of ['urlMatches', 'originAndPathMatches'] as const) {
+    const v = str(key);
+    if (v === null) continue;
+    if (v.length > 1000) return false;
+    let re: RegExp;
+    try {
+      re = new RegExp(v);
+    } catch {
+      return false;
+    }
+    if (!re.test(key === 'urlMatches' ? full : `${u.origin}${u.pathname}`)) return false;
+  }
+  if (Array.isArray(f.schemes) && !f.schemes.includes(u.protocol.replace(/:$/, ''))) return false;
+  if (Array.isArray(f.ports)) {
+    const port = Number(u.port || (u.protocol === 'https:' ? 443 : u.protocol === 'http:' ? 80 : 0));
+    const ok = f.ports.some((p) => (typeof p === 'number' ? p === port : Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number' && port >= p[0] && port <= p[1]));
+    if (!ok) return false;
+  }
+  return true;
+}
+
+export interface PageFacts {
+  url: string;
+  /** Selectores CSS de las condiciones que se encontraron en la página. */
+  css: ReadonlySet<string>;
+  bookmarked: boolean;
+}
+
+/** ¿Una condición PageStateMatcher se cumple? (las propiedades que trae, todas) */
+export function matchesPageState(condition: unknown, page: PageFacts): boolean {
+  const c = (condition ?? {}) as { instanceType?: unknown; pageUrl?: unknown; css?: unknown; isBookmarked?: unknown };
+  if (c.instanceType !== 'declarativeContent.PageStateMatcher') return false;
+  if (c.pageUrl !== undefined && !matchesUrlFilter(page.url, c.pageUrl)) return false;
+  if (Array.isArray(c.css) && !c.css.every((s) => typeof s === 'string' && page.css.has(s))) return false;
+  if (typeof c.isBookmarked === 'boolean' && c.isBookmarked !== page.bookmarked) return false;
+  return true;
+}
+
+/** Selectores CSS que usan las reglas (para buscarlos en la página una sola vez). */
+export function cssSelectorsOf(rules: Array<{ conditions?: unknown }>): string[] {
+  const out = new Set<string>();
+  for (const r of rules) for (const c of Array.isArray(r.conditions) ? r.conditions : []) for (const s of Array.isArray((c as { css?: unknown }).css) ? ((c as { css: unknown[] }).css) : []) if (typeof s === 'string' && s.length < 500) out.add(s);
+  return [...out];
+}
