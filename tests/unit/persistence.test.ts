@@ -198,7 +198,7 @@ describe('zoom, permisos, favicons y configuración guardados', () => {
   });
 
   it('configuración: solo valores conocidos', () => {
-    expect(sanitizeSettings({ searchEngine: 'duckduckgo', startup: 'newtab' })).toEqual({ searchEngine: 'duckduckgo', startup: 'newtab', downloadDir: null, bookmarksBar: 'always', offerPasswords: true, sleepTabsAfter: 15, neverSleepSites: [], confirmCloseTabs: true, sleepWhenLowMemory: true, theme: 'system', customThemes: [] });
+    expect(sanitizeSettings({ searchEngine: 'duckduckgo', startup: 'newtab' })).toEqual({ searchEngine: 'duckduckgo', startup: 'newtab', startupPages: [], clearOnExit: { history: false, siteData: false, cache: false }, downloadDir: null, bookmarksBar: 'always', offerPasswords: true, sleepTabsAfter: 15, neverSleepSites: [], confirmCloseTabs: true, sleepWhenLowMemory: true, theme: 'system', customThemes: [] });
     expect(sanitizeSettings({ sleepTabsAfter: 30 }).sleepTabsAfter).toBe(30);
     expect(sanitizeSettings({ sleepTabsAfter: 0 }).sleepTabsAfter).toBe(0);
     expect(sanitizeSettings({ sleepTabsAfter: 7 }).sleepTabsAfter).toBe(15);

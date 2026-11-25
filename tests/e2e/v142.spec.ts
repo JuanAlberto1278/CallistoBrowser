@@ -193,3 +193,54 @@ test('descargas (pasan por la autorización de Callisto), iniciar sesión, MHTML
   await api('proxy.settings.clear', {});
   expect(await resolve()).not.toContain(`127.0.0.1:${port}`);
 });
+
+// 1.5: chrome.contentSettings lee y cambia los mismos ajustes que el panel del sitio
+test('chrome.contentSettings: los ajustes del sitio (y clear() quita solo lo de la extensión)', async () => {
+  const origin = server.base;
+  expect(await api('contentSettings.javascript.get', { primaryUrl: P1() })).toEqual({ setting: 'allow' });
+  expect(await api('contentSettings.popups.get', { primaryUrl: P1() })).toEqual({ setting: 'block' });
+  expect(await api('contentSettings.camera.get', { primaryUrl: P1() })).toEqual({ setting: 'ask' });
+  expect(await api('contentSettings.cookies.get', { primaryUrl: P1() })).toEqual({ setting: 'allow' });
+
+  // set: un sitio exacto; con comodines en el dominio o valores inválidos, el error de Callisto
+  expect(await api('contentSettings.javascript.set', { primaryPattern: `${origin}/*`, setting: 'block' })).toBeUndefined();
+  expect(await api('contentSettings.javascript.get', { primaryUrl: P1() })).toEqual({ setting: 'block' });
+  expect(await api('contentSettings.images.set', { primaryPattern: '*://*.ejemplo.com/*', setting: 'block' })).toMatch(/^ERROR: Callisto guarda los ajustes por sitio/);
+  expect(await api('contentSettings.images.set', { primaryPattern: `${origin}/*`, setting: 'ask' })).toMatch(/^ERROR: Valor no válido/);
+  expect(await api('contentSettings.cookies.set', { primaryPattern: `${origin}/*`, setting: 'block' })).toMatch(/^ERROR: Callisto todavía no permite bloquear cookies/);
+  expect(await api('contentSettings.camera.set', { primaryPattern: `${origin}/*`, setting: 'allow' })).toBeUndefined();
+
+  // El panel del sitio lo muestra
+  await c.ui.getByTestId('tab').first().click();
+  await c.ui.getByTestId('security').click();
+  await expect(c.ui.getByTestId('site-setting-javascript')).toHaveValue('block');
+  await expect(c.ui.getByTestId('site-setting-camera')).toHaveValue('allow');
+  // Lo que elige el usuario no lo borra la extensión
+  await c.ui.getByTestId('site-setting-images').selectOption('block');
+  await c.ui.keyboard.press('Escape');
+
+  expect(await api('contentSettings.javascript.clear', {})).toBeUndefined();
+  expect(await api('contentSettings.javascript.get', { primaryUrl: P1() })).toEqual({ setting: 'allow' });
+  expect(await api('contentSettings.camera.get', { primaryUrl: P1() })).toEqual({ setting: 'allow' });
+  expect(await api('contentSettings.images.clear', {})).toBeUndefined();
+  expect(await api('contentSettings.images.get', { primaryUrl: P1() })).toEqual({ setting: 'block' });
+});
+
+// 1.5: bloquear JavaScript e imágenes en un sitio no puede dejar a las extensiones sin chrome.webRequest
+test('chrome.webRequest sigue funcionando con JavaScript e imágenes bloqueados en un sitio', async () => {
+  expect(await api('contentSettings.javascript.set', { primaryPattern: `${server.base}/*`, setting: 'block' })).toBeUndefined();
+  expect(await api('contentSettings.images.set', { primaryPattern: `${server.base}/*`, setting: 'block' })).toBeUndefined();
+  const wr = store.publish('webrequest');
+  const wcId = await c.app.evaluate(({ webContents }, url) => webContents.getAllWebContents().find((w) => w.getURL() === url)!.id, P1());
+  const answer = c.app.evaluate((_e, a) => (globalThis as unknown as { __callistoTestStoreInstall: (p: string, id: string, wc: number) => Promise<string> }).__callistoTestStoreInstall('default', a.id, a.wcId), { id: wr.id, wcId });
+  await c.ui.getByTestId('extension-prompt-add').click();
+  expect(await answer).toBe('allow');
+  await c.ui.getByTestId('tab').first().click();
+  // Un sitio con bloqueos en la pestaña (se conecta el control de la pestaña) y la navegación que observa la extensión
+  await typeAddress(c.ui, `${server.base}/site/js`);
+  await expect(c.ui.locator('[data-testid="tab"][data-active="true"]')).toContainText('Prueba JS');
+  await expect.poll(async () => {
+    await typeAddress(c.ui, `${server.base}/page2`);
+    return activeTabUrl(c.app);
+  }, { timeout: 15_000 }).toBe(`${server.base}/page1?visto=webRequest`);
+});

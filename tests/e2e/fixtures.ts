@@ -247,6 +247,22 @@ export async function startServer(): Promise<TestServer> {
       case '/download':
         res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="callisto-prueba.bin"' });
         return res.end(Buffer.alloc(4096, 7));
+      // ---- ajustes por sitio (1.5)
+      case '/site/popup-auto':
+        // Abre una ventana sola al cargar (sin clic del usuario)
+        return html(page('Emergente sola', `<script>window.open('/page2?desde=emergente')</script>`));
+      case '/site/js':
+        return html(page('Prueba JS', `<script>document.title = 'JS activo'</script>`));
+      case '/site/img':
+        return html(page('Prueba imagen', '<img id="i" src="/site/pixel.png" alt="punto">'));
+      case '/site/frames': {
+        // Iframes de otro sitio (localhost en vez de 127.0.0.1): siguen el ajuste del sitio de la pestaña
+        const other = `http://localhost:${(server.address() as { port: number }).port}`;
+        return html(page('Con iframes', `<iframe id="f1" src="${other}/site/js"></iframe><iframe id="f2" src="${other}/site/img"></iframe>`));
+      }
+      case '/site/pixel.png':
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+        return res.end(PNG_1X1);
       case '/echo-headers':
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(req.headers));

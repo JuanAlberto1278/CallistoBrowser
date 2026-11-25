@@ -25,6 +25,7 @@ const api: CallistoInternalApi = {
     checkUpdate: () => ipcRenderer.invoke(INTERNAL_IPC.settingsCheckUpdate),
     installUpdate: () => ipcRenderer.send(INTERNAL_IPC.settingsInstallUpdate),
     makeDefault: () => ipcRenderer.send(INTERNAL_IPC.settingsMakeDefault),
+    currentPages: () => ipcRenderer.invoke(INTERNAL_IPC.settingsCurrentPages),
     clearData: (r) => ipcRenderer.invoke(INTERNAL_IPC.settingsClearData, { period: String(r.period), history: r.history === true, siteData: r.siteData === true, cache: r.cache === true }),
   },
   downloads: {

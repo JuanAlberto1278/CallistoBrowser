@@ -374,6 +374,16 @@ function mainWorld(b: Bridge): void {
     def(chrome, 'downloads', dl);
     late.push(() => def(chrome, 'downloads', dl));
   }
+  // ---- 1.5
+  if (has('contentSettings')) {
+    const cs: Record<string, unknown> = {};
+    for (const t of ['javascript', 'images', 'popups', 'location', 'notifications', 'camera', 'microphone', 'cookies']) {
+      const fn = (n: string) => (...a: unknown[]) => call(`contentSettings.${n}`)(t, ...a);
+      cs[t] = { get: fn('get'), set: fn('set'), clear: fn('clear'), getResourceIdentifiers: fn('getResourceIdentifiers') };
+    }
+    def(chrome, 'contentSettings', cs);
+    late.push(() => def(chrome, 'contentSettings', cs));
+  }
   if (has('topSites')) {
     const topSites = { get: call('topSites.get') };
     def(chrome, 'topSites', topSites);

@@ -21,7 +21,13 @@ import {
   toElectronProxy,
   type ChromeDownloadItem,
   type ExtensionCommand,
+  CONTENT_SETTING_TYPES,
+  isContentSettingType,
+  patternOrigins,
+  validContentSetting,
 } from './api-helpers';
+import { webOrigin } from '../permissions';
+import { SITE_CONTENT_DEFAULTS, SITE_PROMPT_KINDS, type SiteContentKind } from '../../shared/site-settings';
 import type { ClosedEntry, ClosedTabs } from '../closed-tabs';
 import { Tab } from '../tab';
 import { showWindow } from '../test-mode';
@@ -317,6 +323,53 @@ export function registerBrowserApis(manager: ExtensionManager, deps: BrowserApiD
     const c = (changes ?? {}) as Record<string, unknown>;
     for (const key of ['title', 'type', 'checked', 'contexts', 'visible', 'enabled', 'parentId', 'documentUrlPatterns', 'targetUrlPatterns']) if (key in c) props[key] = c[key];
   });
+
+  // ------------------------------------------------------------ chrome.contentSettings (1.5): los ajustes por sitio
+  // Lee y cambia los mismos ajustes que el panel del sitio (candado). Lo que cambia una extensión queda anotado, así
+  // clear() vuelve al valor por defecto solo lo suyo (no lo que eligió el usuario).
+  const csKey = (id: string) => `ext.contentSettings.${id}`;
+  const csDetails = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
+  handle('contentSettings.get', (_event, type, details) => {
+    if (!isContentSettingType(type)) throw new Error('Tipo de ajuste desconocido.');
+    const kind = CONTENT_SETTING_TYPES[type];
+    const origin = webOrigin(typeof csDetails(details).primaryUrl === 'string' ? (csDetails(details).primaryUrl as string) : undefined);
+    if (!kind) return { setting: 'allow' }; // cookies: Callisto las permite en todos los sitios
+    if ((SITE_PROMPT_KINDS as readonly string[]).includes(kind)) return { setting: (origin && profile.permissions.get(origin, kind)) || 'ask' };
+    return { setting: origin ? profile.contentSetting(origin, kind as SiteContentKind) : SITE_CONTENT_DEFAULTS[kind as SiteContentKind] };
+  }, 'contentSettings');
+  handle('contentSettings.set', (event, type, details) => {
+    if (!isContentSettingType(type)) throw new Error('Tipo de ajuste desconocido.');
+    const d = csDetails(details);
+    const kind = CONTENT_SETTING_TYPES[type];
+    if (!kind) throw new Error('Callisto todavía no permite bloquear cookies por sitio.');
+    if (d.scope === 'incognito_session_only') throw new Error('Callisto no guarda ajustes solo para las ventanas privadas.');
+    if (!validContentSetting(kind, d.setting)) throw new Error(`Valor no válido para ${type}: ${String(d.setting)}`);
+    const origins = patternOrigins(d.primaryPattern);
+    if (!origins) throw new Error('Callisto guarda los ajustes por sitio: el patrón tiene que indicar un sitio exacto (sin comodines en el dominio).');
+    const id = event.extension!.id;
+    const mine = new Set(profile.kv.get<string[]>(csKey(id)) ?? []);
+    for (const origin of origins) {
+      profile.setSiteSetting(origin, kind, d.setting);
+      mine.add(`${kind} ${origin}`);
+    }
+    profile.kv.set(csKey(id), [...mine].slice(-1000));
+  }, 'contentSettings');
+  handle('contentSettings.clear', (event, type, details) => {
+    if (!isContentSettingType(type)) throw new Error('Tipo de ajuste desconocido.');
+    if (csDetails(details).scope === 'incognito_session_only') return;
+    const kind = CONTENT_SETTING_TYPES[type];
+    if (!kind) return;
+    const id = event.extension!.id;
+    const mine = profile.kv.get<string[]>(csKey(id)) ?? [];
+    const keep: string[] = [];
+    for (const entry of mine) {
+      const [k, origin] = entry.split(' ');
+      if (k === kind && origin) profile.setSiteSetting(origin, kind, 'default');
+      else keep.push(entry);
+    }
+    profile.kv.set(csKey(id), keep);
+  }, 'contentSettings');
+  handle('contentSettings.getResourceIdentifiers', () => undefined, 'contentSettings');
 
   // ------------------------------------------------------------ chrome.topSites: los sitios de la página nueva
 

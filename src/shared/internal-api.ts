@@ -1,7 +1,8 @@
+import type { SiteSettingKind } from './site-settings';
 // API de las páginas internas (callisto://history, callisto://settings). Cada página solo puede usar su parte:
 // el proceso principal comprueba qué página envía cada pedido.
 
-import type { DownloadAction, PromptPermission } from './ipc';
+import type { DownloadAction } from './ipc';
 import type { DownloadEntry } from './downloads';
 import type { BookmarkNode, FolderOption } from './bookmarks';
 import type { ProfileColor } from './profiles';
@@ -24,7 +25,8 @@ export type ClearPeriod = 'hour' | 'day' | 'week' | 'month' | 'all';
 
 export interface SitePermissionEntry {
   origin: string;
-  permission: PromptPermission;
+  /** Un permiso que se pregunta o un ajuste del sitio (sonido, ventanas emergentes, JavaScript, imágenes). */
+  permission: SiteSettingKind;
   label: string;
   setting: 'allow' | 'block';
 }
@@ -100,6 +102,7 @@ export const INTERNAL_IPC = {
   settingsChooseDownloadDir: 'callisto-internal:settings-choose-download-dir',
   settingsResetDownloadDir: 'callisto-internal:settings-reset-download-dir',
   settingsClearData: 'callisto-internal:settings-clear-data',
+  settingsCurrentPages: 'callisto-internal:settings-current-pages',
   settingsDefaultBrowser: 'callisto-internal:settings-default-browser',
   settingsUpdateStatus: 'callisto-internal:settings-update-status',
   settingsMemory: 'callisto-internal:settings-memory',
@@ -185,13 +188,15 @@ export interface CallistoInternalApi {
   settings: {
     get(): Promise<SettingsSnapshot>;
     set(partial: Partial<Settings>): Promise<SettingsSnapshot>;
-    removePermission(origin: string, permission: PromptPermission): Promise<SettingsSnapshot>;
+    removePermission(origin: string, permission: SiteSettingKind): Promise<SettingsSnapshot>;
     removeZoom(host: string): Promise<SettingsSnapshot>;
     /** Abre el selector de carpetas de Windows (la ruta la elige el usuario, no la página). */
     chooseDownloadDir(): Promise<SettingsSnapshot>;
     resetDownloadDir(): Promise<SettingsSnapshot>;
     /** Borrar datos de navegación (historial, cookies y datos de sitios, caché). */
     clearData(request: ClearDataRequest): Promise<void>;
+    /** Las páginas web abiertas en la ventana (para "Abrir páginas específicas"). */
+    currentPages(): Promise<string[]>;
     /** ¿Callisto está registrado (instalado) y es el navegador predeterminado? */
     defaultBrowser(): Promise<{ registered: boolean; isDefault: boolean }>;
     /** Abre la página de Windows para elegir el navegador predeterminado. */

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { SiteSettingKind } from '../shared/site-settings';
 
 // Datos persistentes de un perfil además del historial: zoom por sitio, decisiones de permisos, favicons y
 // configuración/estado (JSON). Sin Electron, para poder probarlos de forma aislada.
@@ -37,7 +38,8 @@ export type PermissionSetting = 'allow' | 'block';
 
 export interface PermissionRecord {
   origin: string;
-  permission: SitePermission;
+  /** Un permiso que se pregunta o, desde la 1.5, un ajuste del sitio (sonido, ventanas emergentes, JavaScript, imágenes). */
+  permission: SiteSettingKind;
   setting: PermissionSetting;
   updated: number;
 }
@@ -45,18 +47,18 @@ export interface PermissionRecord {
 export class PermissionStore {
   constructor(private readonly db: DatabaseSync, private readonly now: () => number = Date.now) {}
 
-  get(origin: string, permission: SitePermission): PermissionSetting | undefined {
+  get(origin: string, permission: SiteSettingKind): PermissionSetting | undefined {
     const r = this.db.prepare('SELECT setting FROM permissions WHERE origin = ? AND permission = ?').get(origin, permission) as { setting: PermissionSetting } | undefined;
     return r?.setting;
   }
 
-  set(origin: string, permission: SitePermission, setting: PermissionSetting): void {
+  set(origin: string, permission: SiteSettingKind, setting: PermissionSetting): void {
     this.db
       .prepare('INSERT INTO permissions (origin, permission, setting, updated) VALUES (?, ?, ?, ?) ON CONFLICT(origin, permission) DO UPDATE SET setting = excluded.setting, updated = excluded.updated')
       .run(origin, permission, setting, this.now());
   }
 
-  remove(origin: string, permission: SitePermission): void {
+  remove(origin: string, permission: SiteSettingKind): void {
     this.db.prepare('DELETE FROM permissions WHERE origin = ? AND permission = ?').run(origin, permission);
   }
 

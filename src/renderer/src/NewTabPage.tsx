@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import type { TopSite } from '../../shared/ipc';
+import { useEffect, useRef, useState } from 'react';
+import type { NtpShortcuts, TopSite } from '../../shared/ipc';
+import { MAX_SHORTCUTS, MAX_SHORTCUT_TITLE, shortcutHost, type Shortcut } from '../../shared/shortcuts';
 import { CloseIcon, SearchIcon } from './icons';
 
 const dateFmt = new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -30,10 +31,101 @@ function MoonMark() {
   );
 }
 
-function SiteIcon({ site }: { site: TopSite }) {
+function SiteIcon({ site }: { site: { icon: string | null; host: string } }) {
   const [failed, setFailed] = useState(false);
   if (site.icon && !failed) return <img src={site.icon} alt="" width={24} height={24} onError={() => setFailed(true)} />;
   return <span className="tile-letter">{(site.host[0] ?? '?').toUpperCase()}</span>;
+}
+
+/** Agregar o editar un acceso directo (1.5). */
+function ShortcutEditor({
+  item,
+  suggestions,
+  onSave,
+  onRemove,
+  onClose,
+}: {
+  item: Shortcut | null;
+  suggestions: TopSite[];
+  onSave: (title: string, url: string) => Promise<string | null>;
+  onRemove: (() => void) | null;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState(item?.title ?? '');
+  const [url, setUrl] = useState(item?.url ?? '');
+  const [error, setError] = useState('');
+  const first = useRef<HTMLInputElement>(null);
+  useEffect(() => first.current?.focus(), []);
+  const save = async (t: string, u: string) => {
+    const err = await onSave(t, u);
+    if (err) setError(err);
+  };
+  return (
+    <div className="ntp-dialog-backdrop" onMouseDown={onClose}>
+      <form
+        className="ntp-dialog"
+        role="dialog"
+        aria-label={item ? 'Editar acceso directo' : 'Agregar acceso directo'}
+        data-testid="ntp-editor"
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose();
+        }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(title, url);
+        }}
+      >
+        <h2>{item ? 'Editar acceso directo' : 'Agregar acceso directo'}</h2>
+        <label>
+          Nombre
+          <input ref={first} data-testid="ntp-editor-name" value={title} maxLength={MAX_SHORTCUT_TITLE} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <label>
+          Dirección
+          <input data-testid="ntp-editor-url" value={url} maxLength={2048} spellCheck={false} placeholder="ejemplo.com" onChange={(e) => setUrl(e.target.value)} />
+        </label>
+        {error && (
+          <p className="ntp-dialog-error" role="alert">
+            {error}
+          </p>
+        )}
+        {!item && suggestions.length > 0 && (
+          <div className="ntp-dialog-suggest">
+            <span className="muted">O elegí uno de tus sitios más visitados:</span>
+            <div className="ntp-chips">
+              {suggestions.map((s) => (
+                <button type="button" key={s.host} className="ntp-chip" data-testid="ntp-editor-suggestion" onClick={() => void save(s.title, s.url)}>
+                  {s.host}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="ntp-dialog-actions">
+          {onRemove && (
+            <button type="button" className="ntp-dialog-remove" data-testid="ntp-editor-remove" onClick={onRemove}>
+              Quitar
+            </button>
+          )}
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" className="primary" data-testid="ntp-editor-save" disabled={!url.trim()}>
+            {item ? 'Guardar' : 'Agregar'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M11.5 1.8a1.6 1.6 0 0 1 2.3 0l.4.4a1.6 1.6 0 0 1 0 2.3L5.6 13.1 2 14l.9-3.6z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 /**
@@ -43,13 +135,18 @@ function SiteIcon({ site }: { site: TopSite }) {
 export function NewTabPage({ tabId, searchEngine, isPrivate }: { tabId: number; searchEngine: string; isPrivate: boolean }) {
   const api = window.callisto;
   const [sites, setSites] = useState<TopSite[] | null>(null);
+  const [shortcuts, setShortcuts] = useState<NtpShortcuts | null>(null);
+  /** El editor abierto: un acceso directo, 'new' para agregar, o null. */
+  const [editing, setEditing] = useState<Shortcut | 'new' | null>(null);
   const [text, setText] = useState('');
   const [removed, setRemoved] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
 
   // En privado no se muestran los sitios más visitados (son del perfil, no de esta ventana)
   const load = () => {
-    if (!isPrivate) void api.topSites().then(setSites);
+    if (isPrivate) return;
+    void api.topSites().then(setSites);
+    void api.shortcuts().then(setShortcuts);
   };
   useEffect(load, [tabId, api]);
   useEffect(() => {
@@ -63,6 +160,11 @@ export function NewTabPage({ tabId, searchEngine, isPrivate }: { tabId: number; 
     setSites((list) => list?.filter((s) => s.host !== host) ?? null);
     setTimeout(load, 50);
   };
+
+  // Lo que ya es un acceso directo no se repite en "más visitados" ni en las sugerencias
+  const taken = new Set((shortcuts?.items ?? []).map((s) => shortcutHost(s.url)));
+  const visibleSites = (sites ?? []).filter((s) => !taken.has(s.host));
+  const suggestions = visibleSites;
 
   const date = dateFmt.format(now);
   return (
@@ -104,9 +206,54 @@ export function NewTabPage({ tabId, searchEngine, isPrivate }: { tabId: number; 
           />
         </form>
 
-        {sites && sites.length > 0 && (
-          <section className="ntp-sites" aria-label="Sitios más visitados">
-            {sites.map((s) => (
+        {shortcuts && (
+          <section className="ntp-sites" aria-label="Accesos directos" data-testid="ntp-shortcuts">
+            {shortcuts.items.map((s) => (
+              <div className="tile" key={s.id} data-testid="ntp-shortcut">
+                <button className="tile-link" title={s.url} onClick={() => api.navigate(s.url)}>
+                  <span className="tile-icon">
+                    <SiteIcon site={{ icon: s.icon, host: shortcutHost(s.url) }} />
+                  </span>
+                  <span className="tile-title">{s.title}</span>
+                </button>
+                <button className="tile-hide" data-testid="ntp-shortcut-edit" aria-label={`Editar ${s.title}`} title="Editar o quitar" onClick={() => setEditing(s)}>
+                  <PencilIcon />
+                </button>
+              </div>
+            ))}
+            {shortcuts.items.length < MAX_SHORTCUTS && (
+              <div className="tile">
+                <button className="tile-link" data-testid="ntp-shortcut-add" onClick={() => setEditing('new')}>
+                  <span className="tile-icon tile-add" aria-hidden="true">
+                    +
+                  </span>
+                  <span className="tile-title">Agregar</span>
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+        {shortcuts && !shortcuts.showTopSites && shortcuts.items.length < MAX_SHORTCUTS && suggestions.length > 0 && (
+          <div className="ntp-suggest" data-testid="ntp-suggestions">
+            <span className="muted">Agregar de tus más visitados:</span>
+            {suggestions.slice(0, 4).map((s) => (
+              <button
+                key={s.host}
+                className="ntp-chip"
+                data-testid="ntp-suggestion"
+                title={`Agregar ${s.title} a tus accesos directos`}
+                onClick={() => void api.saveShortcut(null, s.title, s.url).then((r) => 'ok' in r && setShortcuts(r.ok))}
+              >
+                + {s.host}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {shortcuts?.showTopSites && visibleSites.length > 0 && (
+          <section className="ntp-sites ntp-top" aria-label="Sitios más visitados">
+            <h2 className="ntp-section-title">Más visitados</h2>
+            {visibleSites.map((s) => (
               <div className="tile" key={s.host} data-testid="ntp-tile">
                 <button className="tile-link" title={s.url} onClick={() => api.navigate(s.url)}>
                   <span className="tile-icon">
@@ -121,7 +268,45 @@ export function NewTabPage({ tabId, searchEngine, isPrivate }: { tabId: number; 
             ))}
           </section>
         )}
-        {sites && sites.length === 0 && <p className="ntp-empty" data-testid="ntp-empty">Los sitios que visites seguido van a aparecer acá.</p>}
+        {shortcuts?.showTopSites && sites && visibleSites.length === 0 && <p className="ntp-empty" data-testid="ntp-empty">Los sitios que visites seguido van a aparecer acá.</p>}
+        {shortcuts && (
+          <label className="ntp-option">
+            <input
+              type="checkbox"
+              data-testid="ntp-show-top"
+              checked={shortcuts.showTopSites}
+              onChange={(e) => {
+                const show = e.target.checked;
+                setShortcuts({ ...shortcuts, showTopSites: show });
+                void api.setShowTopSites(show).then(setShortcuts);
+              }}
+            />
+            Mostrar también los sitios más visitados
+          </label>
+        )}
+        {editing && (
+          <ShortcutEditor
+            item={editing === 'new' ? null : editing}
+            suggestions={suggestions.slice(0, 6)}
+            onClose={() => setEditing(null)}
+            onSave={async (title, url) => {
+              const r = await api.saveShortcut(editing === 'new' ? null : editing.id, title, url);
+              if ('error' in r) return r.error;
+              setShortcuts(r.ok);
+              setEditing(null);
+              return null;
+            }}
+            onRemove={
+              editing === 'new'
+                ? null
+                : () =>
+                    void api.removeShortcut(editing.id).then((list) => {
+                      setShortcuts(list);
+                      setEditing(null);
+                    })
+            }
+          />
+        )}
 
         {removed && (
           <div className="ntp-toast" role="status">

@@ -28,11 +28,14 @@ interface Props {
   /** Estrella de favoritos: llena si la página ya es favorito; oculta si la página no se puede guardar. */
   starred: boolean;
   starrable: boolean;
+  /** Panel del sitio (1.5): abierto, y abrir/cerrar al tocar el candado (solo en páginas web). */
+  siteOpen: boolean;
+  onToggleSite: () => void;
   onSubmit: (text: string) => void;
   onResetZoom: () => void;
 }
 
-export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, tabSearchSignal, searchEngine, onOverlay, starred, starrable, onSubmit, onResetZoom }: Props) {
+export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, tabSearchSignal, searchEngine, onOverlay, starred, starrable, siteOpen, onToggleSite, onSubmit, onResetZoom }: Props) {
   const api = window.callisto;
   const input = useRef<HTMLInputElement>(null);
   const dropdown = useRef<HTMLDivElement>(null);
@@ -194,10 +197,27 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, tab
   const Icon = s.icon;
   return (
     <div className="address-bar">
-      <span className={`security ${s.className}`} title={s.title} data-testid="security" data-level={security}>
-        <Icon />
-        {s.label && <span className="security-label">{s.label}</span>}
-      </span>
+      {/^https?:/i.test(url) && security !== 'none' ? (
+        <button
+          type="button"
+          className={`security ${s.className}`}
+          title={`${s.title} — Ver información del sitio`}
+          aria-label="Ver información del sitio"
+          aria-expanded={siteOpen}
+          data-testid="security"
+          data-level={security}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={onToggleSite}
+        >
+          <Icon />
+          {s.label && <span className="security-label">{s.label}</span>}
+        </button>
+      ) : (
+        <span className={`security ${s.className}`} title={s.title} data-testid="security" data-level={security}>
+          <Icon />
+          {s.label && <span className="security-label">{s.label}</span>}
+        </span>
+      )}
       <input
         ref={input}
         type="text"

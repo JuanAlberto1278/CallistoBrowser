@@ -5,6 +5,7 @@ import { DefaultBrowserSection } from './DefaultBrowser';
 import { UpdatesRow } from './Updates';
 import { CHANGELOG } from '../../../shared/changelog';
 import { MemoryNow, NeverSleepSites } from './Performance';
+import { ClearOnExitRows, StartupPages } from './Startup';
 import type { SettingsSnapshot } from '../../../shared/internal-api';
 import type { SearchEngineId, Settings } from '../../../shared/settings';
 
@@ -15,6 +16,19 @@ export function SettingsPage() {
   useEffect(() => {
     void api.settings.get().then(setSnap);
   }, [api]);
+
+  // callisto://settings/#seccion (desde el panel del sitio): se muestra esa sección
+  const loaded = !!snap;
+  useEffect(() => {
+    if (!loaded) return;
+    const show = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      if (id) document.getElementById(id)?.closest('section')?.scrollIntoView({ block: 'start' });
+    };
+    show();
+    window.addEventListener('hashchange', show);
+    return () => window.removeEventListener('hashchange', show);
+  }, [loaded]);
 
   if (!snap) return <div className="page" />;
   const { settings } = snap;
@@ -71,6 +85,18 @@ export function SettingsPage() {
           />
           Abrir una pestaña nueva
         </label>
+        <label className="radio">
+          <input
+            type="radio"
+            name="startup"
+            data-testid="settings-startup-pages"
+            checked={settings.startup === 'pages'}
+            onChange={() => update({ startup: 'pages' })}
+          />
+          Abrir páginas específicas
+        </label>
+        {settings.startup === 'pages' && <StartupPages settings={settings} update={update} />}
+        <ClearOnExitRows settings={settings} update={update} />
         <label className="row">
           <span>Preguntar antes de cerrar una ventana con varias pestañas</span>
           <input type="checkbox" data-testid="settings-confirm-close" checked={settings.confirmCloseTabs} onChange={(e) => update({ confirmCloseTabs: e.target.checked })} />
@@ -159,11 +185,15 @@ export function SettingsPage() {
       </section>
 
       <section className="card" aria-labelledby="s-perms">
-        <h2 id="s-perms">Permisos de sitios</h2>
+        <h2 id="s-perms">Permisos y ajustes de sitios</h2>
+        <p className="muted">
+          Para cambiar los de un sitio, tocá el candado junto a su dirección: permisos, sonido, ventanas emergentes, JavaScript e
+          imágenes.
+        </p>
         {snap.permissions.length === 0 ? (
           <p className="muted" data-testid="settings-no-permissions">
-            Ningún sitio tiene permisos guardados. Cuando un sitio pida usar la cámara, el micrófono, tu ubicación o mostrarte
-            notificaciones, Callisto te va a preguntar.
+            Ningún sitio tiene permisos ni ajustes guardados. Cuando un sitio pida usar la cámara, el micrófono, tu ubicación o
+            mostrarte notificaciones, Callisto te va a preguntar.
           </p>
         ) : (
           <table data-testid="settings-permissions">
@@ -191,7 +221,7 @@ export function SettingsPage() {
             </tbody>
           </table>
         )}
-        <p className="muted">Al quitar una decisión, el sitio vuelve a preguntar la próxima vez.</p>
+        <p className="muted">Al quitar una decisión, el sitio vuelve a preguntar la próxima vez (o al valor por defecto).</p>
       </section>
 
       <section className="card" aria-labelledby="s-zoom">

@@ -8,6 +8,7 @@ import { FaviconLoader } from './favicon';
 import { openDatabase, openMemoryDatabase } from './db';
 import { HistoryStore } from './history-store';
 import { FaviconStore, KeyValueStore, PermissionStore, ZoomStore, type SitePermission } from './profile-store';
+import { SITE_CONTENT_DEFAULTS, SITE_CONTENT_KINDS, type SiteContentKind, type SiteSettingKind } from '../shared/site-settings';
 import { ALWAYS_ALLOWED, sitePermissionForCheck, sitePermissionsFor, webOrigin } from './permissions';
 import { DEFAULT_SETTINGS, sanitizeSettings, SEARCH_ENGINES, type Settings } from '../shared/settings';
 import { DownloadStore } from './download-store';
@@ -63,6 +64,8 @@ type ProfileEvents = {
   'settings-changed': [Settings];
   /** Cambiaron los favoritos (para actualizar la barra y la estrella en todas las ventanas). */
   'bookmarks-changed': [];
+  /** Cambió un ajuste o permiso de un sitio (origen): las pestañas aplican el sonido, el panel del sitio se actualiza. */
+  'site-settings-changed': [string];
 };
 
 /**
@@ -187,6 +190,20 @@ export class Profile extends EventEmitter<ProfileEvents> {
   }
 
   /** La configuración de un perfil privado es la de su perfil de origen. */
+  /** Valor de un ajuste del sitio (1.5): la excepción guardada o el valor por defecto. */
+  contentSetting(origin: string, kind: SiteContentKind): 'allow' | 'block' {
+    return this.permissions.get(origin, kind) ?? SITE_CONTENT_DEFAULTS[kind];
+  }
+
+  /** Cambiar un ajuste o permiso del sitio ('ask' o el valor por defecto: se borra la excepción). */
+  setSiteSetting(origin: string, kind: SiteSettingKind, value: 'allow' | 'block' | 'ask' | 'default'): void {
+    const isContent = (SITE_CONTENT_KINDS as readonly string[]).includes(kind);
+    const asDefault = value === 'ask' || value === 'default' || (isContent && value === SITE_CONTENT_DEFAULTS[kind as SiteContentKind]);
+    if (asDefault) this.permissions.remove(origin, kind);
+    else this.permissions.set(origin, kind, value as 'allow' | 'block');
+    this.emit('site-settings-changed', origin);
+  }
+
   get settings(): Settings {
     return this.parent ? this.parent.settings : this.settingsValue;
   }

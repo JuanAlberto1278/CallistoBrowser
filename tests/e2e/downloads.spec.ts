@@ -264,6 +264,9 @@ test('cerrar la ventana sin responder no guarda nada', async () => {
 test('nueva pestaña: saludo, búsqueda y sitios más visitados', async () => {
   await expect(c.ui.getByTestId('new-tab-page')).toBeVisible();
   await expect(c.ui.getByTestId('ntp-greeting')).toHaveText(/^Buen(os días|as tardes|as noches)$/);
+  // Desde la 1.5 los más visitados se muestran si se pide (por defecto, solo los accesos directos propios)
+  await expect(c.ui.getByTestId('ntp-empty')).toBeHidden();
+  await c.ui.getByTestId('ntp-show-top').check();
   await expect(c.ui.getByTestId('ntp-empty')).toBeVisible();
 
   // Desde la búsqueda de la página: la pestaña navega (es la misma pestaña, no se reemplaza)
@@ -293,7 +296,15 @@ test('nueva pestaña: saludo, búsqueda y sitios más visitados', async () => {
 test('nueva pestaña: las pestañas que abre una página no muestran la portada', async () => {
   await typeAddress(c.ui, `${server.base}/page1`);
   await expect(c.tab).toHaveTitle('Página 1');
-  await c.tab.evaluate(() => { window.open('about:blank'); });
+  // Con un clic real (el bloqueador de ventanas emergentes de la 1.5 deja pasar solo las que pide el usuario)
+  await c.tab.evaluate(() => {
+    const b = document.createElement('button');
+    b.id = 'abrir';
+    b.textContent = 'Abrir';
+    b.onclick = () => window.open('about:blank');
+    document.body.append(b);
+  });
+  await c.tab.click('#abrir');
   await expect(c.ui.getByTestId('tab')).toHaveCount(2);
   await expect(c.ui.getByTestId('new-tab-page')).toBeHidden();
 });

@@ -10,10 +10,9 @@ import { resources } from './resource-monitor';
 import { memorySavings } from './memory-savings';
 import { openTaskManager, taskManagerContents } from './task-manager';
 import { buildSuggestions, matchesQuery, tabSuggestion, type OpenTabCandidate } from './suggestions';
-import { PERMISSION_LABELS } from './permissions';
-import { SITE_PERMISSIONS, type SitePermission } from './profile-store';
+import { isSiteSettingKind, SITE_SETTING_LABELS } from '../shared/site-settings';
 import { dialog } from 'electron';
-import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type OpenWhere, type Suggestion, type SuggestResult, type TopSite } from '../shared/ipc';
+import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, SITE_ACTIONS, type SiteAction, type DownloadAction, type OpenWhere, type Suggestion, type SuggestResult, type TopSite, type NtpShortcuts } from '../shared/ipc';
 import { BookmarkError } from './bookmark-store';
 import type { ProfileManager } from './profiles';
 import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
@@ -24,6 +23,10 @@ import { resolveInput } from '../shared/omnibox';
 import { SEARCH_ENGINES, type SearchEngineId } from '../shared/settings';
 import { zoomPercent } from '../shared/zoom';
 import { answerPasswordOffer } from './passwords';
+import { clearBrowsingData } from './browsing-data';
+import { randomUUID } from 'node:crypto';
+import type { Profile } from './profile';
+import { sanitizeShortcuts, saveShortcut, SHORTCUT_ERRORS } from '../shared/shortcuts';
 import { WEBSTORE_ORIGIN, isExtensionId } from '../shared/extensions';
 import { themeVars } from '../shared/themes';
 
@@ -88,7 +91,7 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     if (typeof width === 'number') panelOf(e)?.resizeSidePanel(width);
   });
   ipcMain.on(IPC.noticeAction, (e, id: unknown, action: unknown) => {
-    if (typeof id === 'number' && (action === 'wait' || action === 'stop')) from(e)?.active.noticeAction(id, action);
+    if (typeof id === 'number' && (action === 'wait' || action === 'stop' || action === 'open-popup' || action === 'allow-popups')) from(e)?.active.noticeAction(id, action);
   });
   ipcMain.on(IPC.sleepTab, (e, id: unknown) => {
     const c = from(e);
@@ -183,6 +186,21 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   });
   ipcMain.on(IPC.closeFind, (e) => from(e)?.closeFind());
   ipcMain.on(IPC.resetZoom, (e) => from(e)?.active.zoom('reset'));
+  // Panel del sitio (1.5): siempre sobre el sitio de la pestaña activa
+  ipcMain.handle(IPC.siteInfo, (e) => from(e)?.siteInfo() ?? null);
+  ipcMain.handle(IPC.siteSetting, (e, kind: unknown, value: unknown) => {
+    const w = from(e);
+    if (!w || !isSiteSettingKind(kind)) return null;
+    if (value !== 'ask' && value !== 'allow' && value !== 'block' && value !== 'default') return null;
+    w.setSiteSetting(kind, value);
+    return w.siteInfo();
+  });
+  ipcMain.handle(IPC.siteAction, async (e, action: unknown) => {
+    const w = from(e);
+    if (!w || !(SITE_ACTIONS as readonly unknown[]).includes(action)) return null;
+    await w.siteAction(action as SiteAction);
+    return w.siteInfo();
+  });
 
   ipcMain.on(IPC.overlayHeight, (e, px: unknown) => {
     if (typeof px === 'number' && Number.isFinite(px)) from(e)?.setOverlayHeight(px);
@@ -260,6 +278,46 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   });
   ipcMain.on(IPC.restoreTopSites, (e) => from(e)?.ctx.profile.kv.delete('ntp.hidden'));
 
+  // Accesos directos (1.5): del perfil (en una ventana privada, los del perfil de origen; la página no los muestra)
+  const shortcutsOf = (profile: Profile): NtpShortcuts => {
+    const p = profile.parent ?? profile;
+    return {
+      items: sanitizeShortcuts(p.kv.get('ntp.shortcuts')).map((s) => {
+        const iconUrl = p.history.iconUrlFor(s.url);
+        return { ...s, icon: iconUrl ? (p.favicons.cached(iconUrl) ?? null) : null };
+      }),
+      showTopSites: p.kv.get('ntp.showTopSites') === true,
+    };
+  };
+  ipcMain.handle(IPC.shortcuts, (e) => {
+    const c = from(e);
+    return c ? shortcutsOf(c.ctx.profile) : { items: [], showTopSites: false };
+  });
+  ipcMain.handle(IPC.saveShortcut, (e, id: unknown, title: unknown, url: unknown) => {
+    const c = from(e);
+    if (!c || (id !== null && typeof id !== 'string') || typeof title !== 'string' || typeof url !== 'string' || url.length > 2048) return { error: SHORTCUT_ERRORS['invalid-url'] };
+    const p = c.ctx.profile.parent ?? c.ctx.profile;
+    const next = saveShortcut(sanitizeShortcuts(p.kv.get('ntp.shortcuts')), id, title, url, () => randomUUID());
+    if (typeof next === 'string') return { error: SHORTCUT_ERRORS[next] };
+    p.kv.set('ntp.shortcuts', next);
+    BrowserWindowController.refreshAll();
+    return { ok: shortcutsOf(p) };
+  });
+  ipcMain.handle(IPC.removeShortcut, (e, id: unknown) => {
+    const c = from(e);
+    if (!c) return { items: [], showTopSites: false };
+    const p = c.ctx.profile.parent ?? c.ctx.profile;
+    p.kv.set('ntp.shortcuts', sanitizeShortcuts(p.kv.get('ntp.shortcuts')).filter((s) => s.id !== id));
+    return shortcutsOf(p);
+  });
+  ipcMain.handle(IPC.showTopSites, (e, show: unknown) => {
+    const c = from(e);
+    if (!c) return { items: [], showTopSites: false };
+    const p = c.ctx.profile.parent ?? c.ctx.profile;
+    p.kv.set('ntp.showTopSites', show === true);
+    return shortcutsOf(p);
+  });
+
   ipcMain.handle(IPC.suggest, async (e, text: unknown): Promise<SuggestResult> => {
     const c = from(e);
     if (!c || typeof text !== 'string' || !text.trim() || text.length > 1000) return { items: [], inline: null };
@@ -313,7 +371,7 @@ function settingsSnapshot(profile: BrowserWindowController['ctx']['profile']): S
   return {
     settings: profile.settings,
     engines: (Object.keys(SEARCH_ENGINES) as SearchEngineId[]).map((id) => ({ id, name: SEARCH_ENGINES[id].name })),
-    permissions: profile.permissions.list().map((p) => ({ origin: p.origin, permission: p.permission, label: PERMISSION_LABELS[p.permission], setting: p.setting })),
+    permissions: profile.permissions.list().map((p) => ({ origin: p.origin, permission: p.permission, label: SITE_SETTING_LABELS[p.permission] ?? p.permission, setting: p.setting })),
     zoom: profile.zoom.all().map((z) => ({ host: z.host, percent: zoomPercent(z.factor) })),
     downloadDir: profile.downloadDir,
     downloadDirIsDefault: profile.settings.downloadDir === null,
@@ -424,21 +482,21 @@ function registerInternalIpc(): void {
     if (!isObj(req)) return;
     const profile = ctx.profile.parent ?? ctx.profile;
     const period = req.period;
+    let history: 'all' | [number, number] | null = null;
     if (req.history === true) {
-      if (period === 'all') profile.history.deleteAll();
+      if (period === 'all') history = 'all';
       else if (typeof period === 'string' && period in CLEAR_PERIODS) {
         const now = Date.now();
-        profile.history.deleteRange(now - CLEAR_PERIODS[period as keyof typeof CLEAR_PERIODS], now + 1);
+        history = [now - CLEAR_PERIODS[period as keyof typeof CLEAR_PERIODS], now + 1];
       }
     }
-    // Los datos de las extensiones (su configuración) no se tocan, como en Chrome
-    const excludeOrigins = (profile.extensions?.registry.all() ?? []).map((r) => `chrome-extension://${r.id}`);
-    const exclude = excludeOrigins.length ? { excludeOrigins } : {};
-    if (req.siteData === true) {
-      await profile.session.clearData({ dataTypes: ['cookies', 'localStorage', 'indexedDB', 'serviceWorkers', 'fileSystems', 'webSQL', 'backgroundFetch'], ...exclude });
-      await profile.session.clearAuthCache();
-    }
-    if (req.cache === true) await profile.session.clearData({ dataTypes: ['cache'], ...exclude });
+    await clearBrowsingData(profile, { history, siteData: req.siteData === true, cache: req.cache === true });
+  });
+
+  // Páginas al iniciar (1.5): "Usar las páginas abiertas" (las pestañas web de la ventana de la configuración)
+  ipcMain.handle(INTERNAL_IPC.settingsCurrentPages, (e) => {
+    const ctx = fromInternal(e, 'settings') ?? denied();
+    return ctx.win.tabs.map((t) => t.url).filter((u) => /^https?:/i.test(u));
   });
 
   ipcMain.on(INTERNAL_IPC.historyOpen, (e, url: unknown, where: unknown) => {
@@ -537,9 +595,7 @@ function registerInternalIpc(): void {
 
   ipcMain.handle(INTERNAL_IPC.settingsRemovePermission, (e, origin: unknown, permission: unknown) => {
     const ctx = fromInternal(e, 'settings') ?? denied();
-    if (typeof origin === 'string' && SITE_PERMISSIONS.includes(permission as SitePermission)) {
-      ctx.profile.permissions.remove(origin, permission as SitePermission);
-    }
+    if (typeof origin === 'string' && isSiteSettingKind(permission)) ctx.profile.setSiteSetting(origin, permission, 'default');
     return settingsSnapshot(ctx.profile);
   });
 

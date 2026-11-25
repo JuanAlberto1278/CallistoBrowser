@@ -11,6 +11,7 @@ import { DownloadsButton, DownloadsFlyout } from './Downloads';
 import { NewTabPage } from './NewTabPage';
 import { PasswordOfferBubble } from './PasswordOffer';
 import { ExtensionActions, ExtensionInstallDialog } from './Extensions';
+import { SitePanel } from './SitePanel';
 import { applyThemeVars } from '../../shared/themes';
 import { BackIcon, CloseIcon, ForwardIcon, MaskIcon, MoreIcon, ReloadIcon, StopIcon } from './icons';
 
@@ -89,6 +90,10 @@ export function App() {
   const reportBookmarks = useCallback((bottom: number) => setOverlays((o) => (o.bookmarks === bottom ? o : { ...o, bookmarks: bottom })), []);
   const reportExtension = useCallback((bottom: number) => setOverlays((o) => (o.extension === bottom ? o : { ...o, extension: bottom })), []);
   const reportPassword = useCallback((bottom: number) => setOverlays((o) => (o.password === bottom ? o : { ...o, password: bottom })), []);
+  const reportSite = useCallback((bottom: number) => setOverlays((o) => (o.site === bottom ? o : { ...o, site: bottom })), []);
+  /** Panel del sitio (1.5): la pestaña para la que está abierto (otra pestaña: se cierra). */
+  const [siteTab, setSiteTab] = useState<number | null>(null);
+  const closeSite = useCallback(() => setSiteTab(null), []);
 
   useEffect(() => {
     api.onState(setState);
@@ -147,6 +152,8 @@ export function App() {
         if (bookmarks?.editor) api.bookmarkEditorClose();
         // Clic fuera del panel de un grupo: se cierra (los cambios ya se aplicaron)
         if (state?.groupEditor != null) api.editGroup(null);
+        // Clic fuera del panel del sitio: se cierra
+        setSiteTab(null);
       }}
     >
       <div style={{ height: TAB_STRIP_HEIGHT }} className="tabstrip-row" ref={stripRef}>
@@ -179,6 +186,8 @@ export function App() {
           onOverlay={reportSuggestions}
           starred={!!bookmarks?.starred}
           starrable={!!bookmarks?.starrable}
+          siteOpen={siteTab !== null && siteTab === tab?.id}
+          onToggleSite={() => setSiteTab((cur) => (cur !== null && cur === tab?.id ? null : (tab?.id ?? null)))}
           onSubmit={(text) => api.navigate(text)}
           onResetZoom={() => api.resetZoom()}
         />
@@ -237,9 +246,25 @@ export function App() {
         <PasswordOfferBubble key={tab.passwordOffer.id} offer={tab.passwordOffer} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportPassword} />
       )}
       {downloads && <DownloadsFlyout state={downloads} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportDownloads} />}
+      {tab && siteTab === tab.id && (
+        <SitePanel
+          top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4}
+          left={siteLeft()}
+          url={tab.url}
+          zoomPercent={tab.zoomPercent}
+          onClose={closeSite}
+          onBottom={reportSite}
+        />
+      )}
       {state?.extensions.prompt && <ExtensionInstallDialog key={state.extensions.prompt.id} prompt={state.extensions.prompt} top={TAB_STRIP_HEIGHT + TOOLBAR_HEIGHT - 4} onBottom={reportExtension} />}
     </div>
   );
+}
+
+/** El panel del sitio se alinea con el candado. */
+function siteLeft(): number {
+  const el = document.querySelector<HTMLElement>('[data-testid="security"]');
+  return Math.max(8, Math.min((el?.getBoundingClientRect().left ?? 8) - 6, window.innerWidth - 348));
 }
 
 /** "rgb(r, g, b)" -> "#rrggbb" (o null). */

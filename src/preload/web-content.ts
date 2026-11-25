@@ -8,7 +8,7 @@
 // diálogo del sistema de llave de seguridad USB. Callisto anuncia solo lo que soporta. El inicio de sesión con passkey
 // que el usuario elige explícitamente sigue funcionando con el diálogo de Windows.
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
-import { PAGE_EDITED } from '../shared/page-signals';
+import { PAGE_EDITED, USER_ACTIVATION } from '../shared/page-signals';
 import { US_IPC, type UserScriptPlan } from '../shared/user-scripts-ipc';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, PW_IPC, isTextLike, isUsernameLike, pickPasswordIndex, pickUsernameIndex, type FieldInfo, type FieldRect } from '../shared/passwords';
 
@@ -60,6 +60,25 @@ contextBridge.executeInMainWorld({
     }
   },
 });
+}
+
+// ---------------------------------------------------------------- activación del usuario (1.5)
+// Para el bloqueador de ventanas emergentes: una ventana que abre la página se permite si el usuario hizo clic o tocó
+// una tecla hace poco (como en Chrome). Solo eventos reales (isTrusted), en el mundo aislado: la página no los puede
+// fingir. Al apretar (antes del clic), así el aviso llega antes que el pedido de la ventana.
+let activationSent = 0;
+for (const type of ['pointerdown', 'keydown', 'touchstart']) {
+  window.addEventListener(
+    type,
+    (e) => {
+      if (!e.isTrusted) return;
+      const now = Date.now();
+      if (now - activationSent < 250) return;
+      activationSent = now;
+      ipcRenderer.send(USER_ACTIVATION);
+    },
+    true,
+  );
 }
 
 // ---------------------------------------------------------------- texto sin guardar (V1.0)

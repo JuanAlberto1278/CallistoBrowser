@@ -1,4 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
+import { clearOnExit, clearOnExitPending, markClearOnExit } from './browsing-data';
+import { hasClearOnExit } from '../shared/settings';
 import { join } from 'node:path';
 import { webContents, type BaseWindow, type Session, type WebContents } from 'electron';
 import { ExtensionManager, type ExtensionHost } from './extensions/manager';
@@ -85,6 +87,9 @@ export class ProfileManager implements ProfilesApi {
       color: info.color,
     });
     profile.history.expire();
+    // "Al cerrar Callisto, borrar" (1.5): si la última vez se cerró de golpe, se borra ahora
+    if (clearOnExitPending(profile)) void clearOnExit(profile).finally(() => markClearOnExit(profile));
+    else markClearOnExit(profile);
     this.wire(profile);
     profile.extensions = new ExtensionManager(profile, join(this.cfg.userDataDir, 'Profiles', id, 'Extensions'), this.extensionHost, { apiPreload: this.cfg.extensionApiPreload });
     profile.extensions.on('changed', () => BrowserWindowController.refreshAll());
@@ -157,8 +162,16 @@ export class ProfileManager implements ProfilesApi {
       if (tab) tab.requestPermission(request);
       else request.respond(false, false);
     });
-    profile.on('settings-changed', () => BrowserWindowController.settingsChanged());
+    profile.on('settings-changed', () => {
+      markClearOnExit(profile);
+      BrowserWindowController.settingsChanged();
+    });
     profile.on('bookmarks-changed', () => BrowserWindowController.refreshAll());
+    // Un ajuste del sitio cambió (1.5): el sonido se aplica ya; JavaScript e imágenes, al recargar la página
+    profile.on('site-settings-changed', () => {
+      for (const w of this.windowsOf(profile)) for (const t of w.tabs) t.applySiteSound();
+      BrowserWindowController.refreshAll();
+    });
   }
 
   private windowsOf(profile: Profile): BrowserWindowController[] {
@@ -237,12 +250,19 @@ export class ProfileManager implements ProfilesApi {
     }
     rt.saver.resume();
     const saved = rt.store?.load();
-    const restore = rt.ctx.profile.settings.startup === 'restore' ? (saved?.windows ?? []) : [];
+    const settings = rt.ctx.profile.settings;
+    const restore = settings.startup === 'restore' ? (saved?.windows ?? []) : [];
     let last: BrowserWindowController | undefined;
     for (const w of restore) {
       last = new BrowserWindowController(rt.ctx, { restore: { tabs: w.tabs, active: w.active, groups: w.groups }, bounds: w.bounds, maximized: w.maximized });
     }
-    if (!last) last = new BrowserWindowController(rt.ctx, { url: opts.url });
+    // Páginas específicas (1.5): la primera queda al frente; una dirección recibida (desde otro programa), al final
+    const pages = !last && settings.startup === 'pages' ? settings.startupPages : [];
+    if (pages.length) {
+      last = new BrowserWindowController(rt.ctx, { url: pages[0] });
+      for (const url of pages.slice(1)) last.newTab({ url, index: last.tabs.length, activate: false });
+      if (opts.url) last.newTab({ url: opts.url, index: last.tabs.length });
+    } else if (!last) last = new BrowserWindowController(rt.ctx, { url: opts.url });
     else if (opts.url) last.newTab({ url: opts.url });
 
     if (rt.ctx.profile.recoveredDatabase && !rt.noticeShown) {
@@ -301,6 +321,16 @@ export class ProfileManager implements ProfilesApi {
 
   private openWindows(): BrowserWindowController[] {
     return [...BrowserWindowController.all].filter((w) => !w.closing);
+  }
+
+  /** Al salir de Callisto (1.5): lo elegido en "Al cerrar Callisto, borrar", en cada perfil abierto. */
+  async clearOnExitAll(): Promise<void> {
+    const pending = [...this.runtimes.values()].map((rt) => rt.ctx.profile).filter((p) => hasClearOnExit(p.settings));
+    await Promise.allSettled(pending.map((p) => clearOnExit(p)));
+  }
+
+  needsClearOnExit(): boolean {
+    return [...this.runtimes.values()].some((rt) => hasClearOnExit(rt.ctx.profile.settings));
   }
 
   /** Al salir de Callisto: cada perfil guarda sus ventanas. */

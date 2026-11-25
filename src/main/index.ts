@@ -16,7 +16,7 @@ import { updater } from './updater';
 import { compareSemver, isSemver } from '../shared/updates';
 import { ipcMain } from 'electron';
 import { Tab } from './tab';
-import { PAGE_EDITED } from '../shared/page-signals';
+import { PAGE_EDITED, USER_ACTIVATION } from '../shared/page-signals';
 import { ProfileManager } from './profiles';
 import { ProfileRegistry } from './profile-registry';
 import { buildUserAgent } from '../shared/user-agent';
@@ -94,6 +94,8 @@ if (!app.requestSingleInstanceLock()) {
       const tab = Tab.fromWebContents(e.sender);
       if (tab?.kind === 'web') tab.markEdited();
     });
+    // Clic o tecla real del usuario (1.5: bloqueador de ventanas emergentes). Desde cualquier frame de la pestaña.
+    ipcMain.on(USER_ACTIVATION, (e) => Tab.fromWebContents(e.sender)?.noteActivation());
 
     // Sesión de las páginas internas (historial, configuración): en memoria, sin permisos, separada de la web
     const internalSession = session.fromPartition('callisto-internal');
@@ -137,6 +139,15 @@ if (!app.requestSingleInstanceLock()) {
     app.on('before-quit', () => {
       BrowserWindowController.quitting = true; // salir no pregunta "¿Cerrar N pestañas?"
       profiles.finalSaveAll();
+    });
+    // "Al cerrar Callisto, borrar" (1.5): con las ventanas ya cerradas, se borra y recién entonces se sale (hasta 15 s)
+    let clearedOnExit = false;
+    app.on('will-quit', (e) => {
+      if (clearedOnExit || !profiles.needsClearOnExit()) return;
+      e.preventDefault();
+      clearedOnExit = true;
+      const limit = new Promise((r) => setTimeout(r, 15_000));
+      void Promise.race([profiles.clearOnExitAll(), limit]).finally(() => app.quit());
     });
     // La base de datos NO se cierra explícitamente: durante el cierre Chromium sigue emitiendo eventos (permisos que
     // consultan los service workers, títulos de páginas que terminan de cargar…), incluso después de 'exit', y una base

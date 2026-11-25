@@ -8,6 +8,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.5.0',
+    date: '2026-11-25',
+    items: [
+      'Panel del sitio: tocá el candado junto a la dirección para ver si la conexión es segura y cambiar los permisos del sitio, su sonido, ventanas emergentes, JavaScript e imágenes, el zoom, «No dormir nunca», ver sus contraseñas guardadas o borrar sus datos.',
+      'Bloqueador de ventanas emergentes: las que un sitio abre sin que hagas clic se bloquean, con un aviso para abrirla o permitir siempre ese sitio.',
+      'Silenciar un sitio: sus pestañas quedan sin sonido, también las que abras después.',
+      'Al abrir Callisto podés elegir páginas específicas (o usar las que tenés abiertas).',
+      'Al cerrar Callisto puede borrar el historial, las cookies y datos de sitios o la caché: cada uno se elige por separado (apagados por defecto).',
+      'Nueva pestaña con tus accesos directos: agregá, renombrá, editá o quitá los tuyos. Los más visitados se pueden sumar con un clic o mostrar también.',
+      'Las extensiones que cambian ajustes de sitios (chrome.contentSettings) ahora funcionan.',
+    ],
+  },
+  {
     version: '1.4.4',
     date: '2026-11-25',
     items: [

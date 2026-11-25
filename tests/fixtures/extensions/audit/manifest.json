@@ -21,7 +21,8 @@
     "pageCapture",
     "proxy",
     "system.display",
-    "cookies"
+    "cookies",
+    "contentSettings"
   ],
   "host_permissions": [
     "<all_urls>"

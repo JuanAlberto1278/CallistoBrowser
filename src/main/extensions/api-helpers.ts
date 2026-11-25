@@ -1,3 +1,4 @@
+import { SITE_PROMPT_KINDS, type SiteSettingKind } from '../../shared/site-settings';
 // Lógica pura de las APIs de extensiones que agrega Callisto en la 1.4.2 (sin Electron: la prueban las pruebas
 // unitarias). El registro de las APIs está en browser-apis.ts y el lado de las extensiones en src/preload/extension-apis.ts.
 import type { DownloadEntry } from '../../shared/downloads';
@@ -391,4 +392,48 @@ export function cssSelectorsOf(rules: Array<{ conditions?: unknown }>): string[]
   const out = new Set<string>();
   for (const r of rules) for (const c of Array.isArray(r.conditions) ? r.conditions : []) for (const s of Array.isArray((c as { css?: unknown }).css) ? ((c as { css: unknown[] }).css) : []) if (typeof s === 'string' && s.length < 500) out.add(s);
   return [...out];
+}
+
+// ---------------------------------------------------------------- chrome.contentSettings (1.5)
+
+/** Tipos de chrome.contentSettings y el ajuste del sitio de Callisto que manejan (cookies: solo lectura). */
+export const CONTENT_SETTING_TYPES = {
+  javascript: 'javascript',
+  images: 'images',
+  popups: 'popups',
+  location: 'geolocation',
+  notifications: 'notifications',
+  camera: 'camera',
+  microphone: 'microphone',
+  cookies: null,
+} as const satisfies Record<string, SiteSettingKind | null>;
+export type ContentSettingType = keyof typeof CONTENT_SETTING_TYPES;
+
+export const isContentSettingType = (v: unknown): v is ContentSettingType => typeof v === 'string' && Object.hasOwn(CONTENT_SETTING_TYPES, v);
+
+/**
+ * Orígenes de un patrón de chrome.contentSettings ("https://ejemplo.com/*", "*://ejemplo.com:8080/*"). Callisto guarda
+ * los ajustes por sitio exacto: un patrón con comodines en el dominio (o <all_urls>) devuelve null.
+ */
+export function patternOrigins(pattern: unknown): string[] | null {
+  if (typeof pattern !== 'string') return null;
+  const m = /^(\*|https?):\/\/([^/]+?)(?::\*)?(\/.*)?$/.exec(pattern.trim());
+  if (!m || m[2]!.includes('*') || m[2]!.startsWith('[*.]')) return null;
+  const schemes = m[1] === '*' ? ['https', 'http'] : [m[1]!];
+  const out: string[] = [];
+  for (const scheme of schemes) {
+    try {
+      const u = new URL(`${scheme}://${m[2]}/`);
+      if (u.hostname) out.push(u.origin);
+    } catch {
+      return null;
+    }
+  }
+  return out.length ? out : null;
+}
+
+/** ¿El valor vale para ese tipo? (los permisos que se preguntan aceptan "ask") */
+export function validContentSetting(kind: SiteSettingKind, setting: unknown): setting is 'allow' | 'block' | 'ask' {
+  if (setting === 'allow' || setting === 'block') return true;
+  return setting === 'ask' && (SITE_PROMPT_KINDS as readonly string[]).includes(kind);
 }

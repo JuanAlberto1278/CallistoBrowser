@@ -33,7 +33,6 @@ export interface ExtensionManifest {
  * CALLISTO_APIS.)
  */
 export const UNSUPPORTED_APIS: Record<string, string> = {
-  contentSettings: 'cambiar permisos de sitios',
   debugger: 'depurar páginas',
   desktopCapture: 'capturar la pantalla',
   fontSettings: 'configuración de fuentes',

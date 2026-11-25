@@ -355,6 +355,9 @@ a { color: var(--accent); }
 /* Rendimiento */
 .memory-now strong { font-size: 18px; }
 .never-sleep { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; }
+.startup-pages { margin: 4px 0 8px 26px; }
+.startup-url { min-width: 0; overflow-wrap: anywhere; }
+.clear-on-exit { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; }
 .never-sleep-add input { flex: 1; height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--field-border); background: var(--surface); }
 
 /* ---------------------------------------------------------------- administrador de tareas (su propia ventana) */

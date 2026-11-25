@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type Referrer, type WebContents } from 'electron';
 import type { PermissionRequest, Profile } from './profile';
+import { popupAllowed } from '../shared/site-settings';
+import { SiteContentBlocker } from './site-blocking';
 import type { FindState, Notice, NoticeAction, PermissionPrompt, TabState } from '../shared/ipc';
 import type { ResolvedInput } from '../shared/omnibox';
 import { classifyUrl } from '../shared/url-security';
@@ -10,7 +12,7 @@ import { internalPageOf } from '../shared/internal-pages';
 import { errorPageScript } from './error-page';
 import type { TabSnapshot } from './closed-tabs';
 import type { SavedTab } from './session-store';
-import { permissionPhrase } from './permissions';
+import { permissionPhrase, webOrigin } from './permissions';
 import type { PasswordOffer } from '../shared/passwords';
 
 /**
@@ -57,6 +59,8 @@ type TabEvents = {
   favicon: [string, string];
   /** El frame principal cargó un documento nuevo (para las contraseñas: ¿el inicio de sesión funcionó?). */
   navigated: [];
+  /** Abrir esta dirección en una pestaña nueva junto a esta (1.5: la ventana emergente bloqueada que el usuario abrió). */
+  'open-url': [string];
 };
 
 /** Inicio de sesión enviado, a la espera de saber si funcionó (ver passwords.ts). La contraseña, solo en memoria. */
@@ -204,12 +208,14 @@ export class Tab extends EventEmitter<TabEvents> {
 
     wc.on('destroyed', () => {
       Tab.byContentsId.delete(contentsId);
+      this.blocker?.dispose();
       this.denyAllPermissions();
       if (!this.closing) this.emit('closed-by-page');
     });
 
     wc.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
+      this.applySiteBlocking(details.url);
       this.failed = null;
       this.pendingErrorScript = null;
       if (this.httpsUpgrade && details.url !== this.httpsUpgrade.https) this.httpsUpgrade = null;
@@ -227,6 +233,7 @@ export class Tab extends EventEmitter<TabEvents> {
       changed();
     });
     wc.on('did-navigate', (_e, url, httpResponseCode) => {
+      this.applySiteSound(url);
       // Documento nuevo: favicon y resultados de búsqueda anteriores ya no valen
       this.faviconKey = null;
       this.faviconSeq++;
@@ -320,6 +327,12 @@ export class Tab extends EventEmitter<TabEvents> {
       let url: URL;
       try { url = new URL(details.url); } catch { return { action: 'deny' }; }
       if (!['http:', 'https:', 'about:'].includes(url.protocol) || !this.openHandler) return { action: 'deny' };
+      // Bloqueador de ventanas emergentes (1.5): solo las que pidió el usuario, salvo que el sitio esté permitido
+      const origin = webOrigin(wc.getURL());
+      if (origin && !popupAllowed(this.profile.contentSetting(origin, 'popups'), this.lastActivation, Date.now())) {
+        this.popupBlocked(details.url, origin);
+        return { action: 'deny' };
+      }
       const open = this.openHandler;
       return {
         action: 'allow',
@@ -627,6 +640,66 @@ export class Tab extends EventEmitter<TabEvents> {
     this.noticeState = null;
     this.queueState();
     if (action === 'stop' && !this.webContents.isDestroyed()) this.webContents.forcefullyCrashRenderer();
+    const blocked = this.blockedPopup;
+    if ((action === 'open-popup' || action === 'allow-popups') && blocked) {
+      this.blockedPopup = null;
+      if (action === 'allow-popups') this.profile.setSiteSetting(blocked.origin, 'popups', 'allow');
+      this.emit('open-url', blocked.url);
+    }
+  }
+
+  // ---------------------------------------------------------------- ventanas emergentes y sonido por sitio (1.5)
+
+  /** Último clic o tecla real del usuario en la página (ms). */
+  private lastActivation = 0;
+  private blockedPopup: { url: string; origin: string } | null = null;
+  /** La pestaña está silenciada por el ajuste del sitio (no por el usuario). */
+  private mutedBySite = false;
+
+  noteActivation(): void {
+    this.lastActivation = Date.now();
+  }
+
+  private popupBlocked(url: string, origin: string): void {
+    this.blockedPopup = { url, origin };
+    let host = origin;
+    try {
+      host = new URL(origin).host;
+    } catch {
+      /* el origen tal cual */
+    }
+    this.showNotice('info', `Callisto bloqueó una ventana emergente de ${host}.`, [
+      { id: 'open-popup', label: 'Abrirla' },
+      { id: 'allow-popups', label: 'Permitir siempre en este sitio' },
+    ]);
+  }
+
+  /** JavaScript e imágenes bloqueados en el sitio que se abre (1.5): ver site-blocking.ts. */
+  private blocker: SiteContentBlocker | null = null;
+  private applySiteBlocking(url: string): void {
+    if (this.kind !== 'web') return;
+    const origin = webOrigin(url);
+    const state = { javascript: !!origin && this.profile.contentSetting(origin, 'javascript') === 'block', images: !!origin && this.profile.contentSetting(origin, 'images') === 'block' };
+    if (!this.blocker && !state.javascript && !state.images) return;
+    this.blocker ??= new SiteContentBlocker(this.webContents);
+    void this.blocker.apply(state);
+  }
+
+  /** Silencia la pestaña si su sitio está silenciado (y le devuelve el sonido si dejó de estarlo). */
+  applySiteSound(url = this.url): void {
+    const wc = this.webContents;
+    if (this.kind !== 'web' || wc.isDestroyed()) return;
+    const origin = webOrigin(url);
+    const muted = !!origin && this.profile.contentSetting(origin, 'sound') === 'block';
+    if (muted && !wc.isAudioMuted()) {
+      wc.setAudioMuted(true);
+      this.mutedBySite = true;
+      this.queueState();
+    } else if (!muted && this.mutedBySite) {
+      this.mutedBySite = false;
+      wc.setAudioMuted(false);
+      this.queueState();
+    }
   }
 
   dismissNotice(id: number): void {

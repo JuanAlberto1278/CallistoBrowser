@@ -12,7 +12,10 @@ import { matchShortcut, type ShortcutAction } from './shortcuts';
 import { closedLabel, type ClosedTabs, type TabSnapshot } from './closed-tabs';
 import { appMenuTemplate, pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
 import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
-import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type SidePanelState, type WindowState } from '../shared/ipc';
+import { buildSiteInfo, clearSiteData } from './site-info';
+import { webOrigin } from './permissions';
+import type { SiteSettingKind } from '../shared/site-settings';
+import { IPC, MAX_OVERLAY_HEIGHT, type SiteAction, type SiteInfo, type SiteSettingValue, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type SidePanelState, type WindowState } from '../shared/ipc';
 import { BAR_FOLDER_ID, OTHER_FOLDER_ID, isBookmarkableUrl, type BookmarkEditorState, type BookmarkNode } from '../shared/bookmarks';
 import { bookmarkItemMenu, bookmarksSubmenu, folderMenu, nodesMenu } from './bookmark-menus';
 import type { ProfileInfo, WindowProfile } from '../shared/profiles';
@@ -399,10 +402,53 @@ export class BrowserWindowController {
   }
 
   /** Abre una página interna: si ya está abierta en esta ventana, la muestra; si no, en una pestaña nueva. */
-  openInternalPage(page: InternalPage): void {
+  openInternalPage(page: InternalPage, section?: string): void {
+    const url = internalUrl(page) + (section ? `#${section}` : '');
     const existing = this.tabs.find((t) => t.internalPage === page);
-    if (existing) return this.activate(existing);
-    this.newTab({ url: internalUrl(page), index: this.childIndex(this.activeTab), openerId: this.activeTab.id });
+    if (existing) {
+      this.activate(existing);
+      if (section && !existing.webContents.isDestroyed()) void existing.webContents.loadURL(url).catch(() => undefined);
+      return;
+    }
+    this.newTab({ url, index: this.childIndex(this.activeTab), openerId: this.activeTab.id });
+  }
+
+  // ---------------------------------------------------------------- panel del sitio (1.5)
+
+  siteInfo(): SiteInfo | null {
+    const tab = this.activeTab;
+    return tab ? buildSiteInfo(this.ctx.profile, tab, this.neverSleepState(tab)) : null;
+  }
+
+  setSiteSetting(kind: SiteSettingKind, value: SiteSettingValue | 'default'): void {
+    const origin = this.activeTab?.kind === 'web' ? webOrigin(this.activeTab.url) : null;
+    if (origin) this.ctx.profile.setSiteSetting(origin, kind, value);
+  }
+
+  async siteAction(action: SiteAction): Promise<void> {
+    const tab = this.activeTab;
+    if (!tab || tab.kind !== 'web') return;
+    switch (action) {
+      case 'zoom-in':
+        return tab.zoom('in');
+      case 'zoom-out':
+        return tab.zoom('out');
+      case 'zoom-reset':
+        return tab.zoom('reset');
+      case 'toggle-never-sleep':
+        return this.toggleNeverSleep(tab);
+      case 'reload':
+        return tab.reload();
+      case 'clear-data': {
+        const origin = webOrigin(tab.url);
+        if (origin) await clearSiteData(this.ctx.profile, origin);
+        return;
+      }
+      case 'open-settings':
+        return this.openInternalPage('settings', 's-perms');
+      case 'open-passwords':
+        return this.openInternalPage('passwords');
+    }
   }
 
   /** Abre una dirección elegida en una página interna (historial). */
@@ -432,6 +478,8 @@ export class BrowserWindowController {
     tab.on('closed-by-page', onClosedByPage);
     tab.on('zoom-changed', onZoom);
     tab.on('favicon', onFavicon);
+    const onOpenUrl = (url: string) => this.newTab({ url, index: this.childIndex(tab), openerId: tab.id });
+    tab.on('open-url', onOpenUrl);
     // Las extensiones ven las pestañas web del perfil (chrome.tabs), con esta ventana
     const extensions = tab.kind === 'web' ? this.ctx.profile.extensions : null;
     extensions?.tabAdded(tab.webContents, this.win);
@@ -443,6 +491,7 @@ export class BrowserWindowController {
         tab.off('closed-by-page', onClosedByPage);
         tab.off('zoom-changed', onZoom);
         tab.off('favicon', onFavicon);
+        tab.off('open-url', onOpenUrl);
         tab.openHandler = null;
         extensions?.tabRemoved(tab.webContents);
       },

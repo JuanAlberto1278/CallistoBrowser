@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: webRequest",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto: observa las navegaciones con chrome.webRequest (1.5).",
+  "permissions": ["webRequest"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "sw.js" }
+}

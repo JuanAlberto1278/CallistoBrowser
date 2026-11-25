@@ -9,8 +9,39 @@ import type { GroupAction, GroupColor, TabGroupState } from './tab-groups';
 import type { PasswordOffer } from './passwords';
 import type { ExtensionInstallPrompt } from './extensions';
 import type { ThemeVars } from './themes';
+import type { SiteSettingKind } from './site-settings';
+import type { Shortcut } from './shortcuts';
 
-export type NoticeAction = 'wait' | 'stop';
+export type SiteSettingValue = 'ask' | 'allow' | 'block';
+
+export interface SiteSettingEntry {
+  kind: SiteSettingKind;
+  label: string;
+  value: SiteSettingValue;
+  /** El valor sin una excepción para el sitio. */
+  defaultValue: SiteSettingValue;
+}
+
+/** Panel del sitio (1.5): lo que muestra el candado. */
+export interface SiteInfo {
+  origin: string;
+  host: string;
+  security: SecurityLevel;
+  /** Permisos que se preguntan (cámara, micrófono, ubicación, notificaciones). */
+  prompts: SiteSettingEntry[];
+  /** Sonido, ventanas emergentes, JavaScript e imágenes. */
+  content: SiteSettingEntry[];
+  zoomPercent: number;
+  neverSleep: { site: string; listed: boolean } | null;
+  /** Contraseñas guardadas para este sitio. */
+  passwords: number;
+  isPrivate: boolean;
+}
+
+export const SITE_ACTIONS = ['zoom-in', 'zoom-out', 'zoom-reset', 'toggle-never-sleep', 'reload', 'clear-data', 'open-settings', 'open-passwords'] as const;
+export type SiteAction = (typeof SITE_ACTIONS)[number];
+
+export type NoticeAction = 'wait' | 'stop' | 'open-popup' | 'allow-popups';
 
 export interface Notice {
   id: number;
@@ -99,6 +130,13 @@ export interface TopSite {
   host: string;
   title: string;
   icon: string | null;
+}
+
+/** Accesos directos de la página de nueva pestaña (1.5). */
+export interface NtpShortcuts {
+  items: Array<Shortcut & { icon: string | null }>;
+  /** Mostrar también los sitios más visitados. */
+  showTopSites: boolean;
 }
 
 export type DownloadAction = 'pause' | 'resume' | 'cancel' | 'open' | 'show' | 'retry' | 'remove';
@@ -198,6 +236,9 @@ export const IPC = {
   find: 'callisto:find',
   closeFind: 'callisto:close-find',
   resetZoom: 'callisto:reset-zoom',
+  siteInfo: 'callisto:site-info',
+  siteSetting: 'callisto:site-setting',
+  siteAction: 'callisto:site-action',
   suggest: 'callisto:suggest',
   overlayHeight: 'callisto:overlay-height',
   respondPermission: 'callisto:respond-permission',
@@ -209,6 +250,10 @@ export const IPC = {
   topSites: 'callisto:top-sites',
   hideTopSite: 'callisto:hide-top-site',
   restoreTopSites: 'callisto:restore-top-sites',
+  shortcuts: 'callisto:shortcuts',
+  saveShortcut: 'callisto:save-shortcut',
+  removeShortcut: 'callisto:remove-shortcut',
+  showTopSites: 'callisto:show-top-sites',
   toggleStar: 'callisto:toggle-star',
   bookmarkEditorSave: 'callisto:bookmark-editor-save',
   bookmarkEditorRemove: 'callisto:bookmark-editor-remove',
@@ -262,6 +307,11 @@ export interface CallistoUiApi {
   find(query: string, forward: boolean, newSession: boolean): void;
   closeFind(): void;
   resetZoom(): void;
+  /** Panel del sitio (1.5): datos del sitio de la pestaña activa (null si no es una página web). */
+  siteInfo(): Promise<SiteInfo | null>;
+  /** Cambia un permiso o ajuste del sitio de la pestaña activa ('default': vuelve al valor por defecto). */
+  setSiteSetting(kind: SiteSettingKind, value: SiteSettingValue | 'default'): Promise<SiteInfo | null>;
+  siteAction(action: SiteAction): Promise<SiteInfo | null>;
   /** Sugerencias para lo que se está escribiendo en la barra de direcciones. */
   suggest(text: string): Promise<SuggestResult>;
   /** Alto del panel de sugerencias abierto (0 = cerrado): la interfaz se extiende sobre la página mientras tanto. */
@@ -279,6 +329,12 @@ export interface CallistoUiApi {
   /** Quita (o vuelve a mostrar, con `hide` en false) un sitio de los más visitados. */
   hideTopSite(host: string, hide: boolean): void;
   restoreTopSites(): void;
+  /** Accesos directos (1.5). */
+  shortcuts(): Promise<NtpShortcuts>;
+  /** Agrega (id null) o cambia un acceso directo: la lista nueva, o el motivo por el que no se pudo. */
+  saveShortcut(id: string | null, title: string, url: string): Promise<{ ok: NtpShortcuts } | { error: string }>;
+  removeShortcut(id: string): Promise<NtpShortcuts>;
+  setShowTopSites(show: boolean): Promise<NtpShortcuts>;
   /** Estrella: agrega la página a favoritos, o abre el editor si ya lo es (Ctrl+D). */
   toggleStar(): void;
   bookmarkEditorSave(values: { title: string; url: string; parentId: number }): void;
