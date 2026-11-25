@@ -70,6 +70,8 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   ipcMain.on(IPC.navigate, (e, input: unknown) => {
     const c = from(e);
     if (!c || typeof input !== 'string') return;
+    // La palabra clave de una extensión ("aud algo"): lo recibe la extensión en vez de navegar
+    if (c.ctx.profile.extensions?.browser?.omniboxEnter(input.slice(0, MAX_ADDRESS_INPUT))) return;
     c.navigateTab(c.active, input.slice(0, MAX_ADDRESS_INPUT));
   });
   ipcMain.on(IPC.goBack, (e) => from(e)?.active.goBack());
@@ -252,10 +254,13 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   });
   ipcMain.on(IPC.restoreTopSites, (e) => from(e)?.ctx.profile.kv.delete('ntp.hidden'));
 
-  ipcMain.handle(IPC.suggest, (e, text: unknown): SuggestResult => {
+  ipcMain.handle(IPC.suggest, async (e, text: unknown): Promise<SuggestResult> => {
     const c = from(e);
     if (!c || typeof text !== 'string' || !text.trim() || text.length > 1000) return { items: [], inline: null };
     const profile = c.ctx.profile;
+    // Palabra clave de una extensión: solo sus sugerencias
+    const fromExtension = await profile.extensions?.browser?.omniboxSuggest(text);
+    if (fromExtension) return { items: fromExtension, inline: null };
     const inline = profile.history.inlineCandidate(text);
     const iconOf = (url: string) => {
       const iconUrl = profile.history.iconUrlFor(url);

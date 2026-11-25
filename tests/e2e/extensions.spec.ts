@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureMenus, clickMenuItem, expectEventually, lastMenuLabels, launchCallisto, pressKey, startServer, typeAddress, type Callisto, type TestServer } from './fixtures';
 import { TestStore, type StoreExtension } from './test-store';
-import { UNSUPPORTED_APIS } from '../../src/shared/extensions';
+import { NOT_ON_WINDOWS_APIS, UNSUPPORTED_APIS } from '../../src/shared/extensions';
 
 let server: TestServer;
 let store: TestStore;
@@ -224,10 +224,12 @@ test('la compatibilidad medida coincide con la tabla de Callisto (extensión son
   expect(exists['browser===chrome']).toBe(true);
   expect(exists.bookmarks).toBe(true);
   expect(exists.tabGroups).toBe(true);
-  // Todo lo que no existe figura como no disponible en la tabla, y viceversa
+  // Todo lo que no existe figura como no disponible (o es de ChromeOS, que Chrome en Windows tampoco tiene), y viceversa
   const missing = Object.entries(exists).filter(([k, v]) => !v && k !== 'action' && k !== 'browser===chrome').map(([k]) => k).sort();
-  const brokenCalls = ['nativeMessaging', 'proxy', 'system.display'];
-  expect([...missing, ...brokenCalls].sort()).toEqual(Object.keys(UNSUPPORTED_APIS).sort());
+  const brokenCalls = ['nativeMessaging'];
+  expect([...missing, ...brokenCalls].sort()).toEqual([...Object.keys(UNSUPPORTED_APIS), ...NOT_ON_WINDOWS_APIS].sort());
+  // 1.4.2: las que Callisto completó existen y responden
+  for (const k of ['history', 'sessions', 'search', 'browsingData', 'identity', 'pageCapture', 'proxy', 'system.display', 'downloads', 'topSites']) expect(exists[k], k).toBe(true);
   for (const k of brokenCalls) expect(calls[k], k).not.toBe('ok');
   // Y lo que existe responde
   for (const [k, v] of Object.entries(calls)) if (!brokenCalls.includes(k)) expect(v, k).toBe('ok');

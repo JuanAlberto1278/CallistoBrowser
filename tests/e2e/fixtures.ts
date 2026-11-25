@@ -209,6 +209,12 @@ export async function startServer(): Promise<TestServer> {
       case '/busy':
         // Usa mucha CPU sin parar (un worker en un bucle: los workers no se frenan en segundo plano)
         return html(page('Ocupada', `<script>new Worker(URL.createObjectURL(new Blob(['for (;;) {}'], { type: 'text/javascript' })));</script>`));
+      case '/redirect-to': {
+        // Redirige a ?to= (inicio de sesión de una extensión: el proveedor vuelve a https://<id>.chromiumapp.org/)
+        const to = new URL(req.url ?? '/', 'http://x').searchParams.get('to') ?? '/';
+        res.writeHead(302, { Location: to });
+        return res.end();
+      }
       case '/sound':
         // Un tono casi inaudible (para el ícono de audio de la pestaña); la política de Electron permite reproducir sin gesto
         return html(page('Con sonido', `<script>const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0.004; o.connect(g).connect(ctx.destination); o.start();</script>`));

@@ -99,11 +99,11 @@ function cleanClosed(raw: unknown): ClosedEntry | null {
   if (!isObj(raw)) return null;
   if (raw.kind === 'tab') {
     const tab = cleanSnapshot(raw.tab);
-    return tab ? { kind: 'tab', windowId: isNum(raw.windowId) ? raw.windowId : -1, index: isNum(raw.index) ? raw.index : 0, tab } : null;
+    return tab ? { kind: 'tab', windowId: isNum(raw.windowId) ? raw.windowId : -1, index: isNum(raw.index) ? raw.index : 0, tab, ...(isNum(raw.time) ? { time: raw.time } : {}) } : null;
   }
   if (raw.kind === 'window' && Array.isArray(raw.tabs)) {
     const tabs = raw.tabs.map(cleanSnapshot).filter((t): t is TabSnapshot => !!t);
-    return tabs.length ? { kind: 'window', tabs, active: isNum(raw.active) ? Math.max(0, Math.min(raw.active, tabs.length - 1)) : 0 } : null;
+    return tabs.length ? { kind: 'window', tabs, active: isNum(raw.active) ? Math.max(0, Math.min(raw.active, tabs.length - 1)) : 0, ...(isNum(raw.time) ? { time: raw.time } : {}) } : null;
   }
   return null;
 }

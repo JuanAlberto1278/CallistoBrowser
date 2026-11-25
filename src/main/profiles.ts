@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { webContents, type BaseWindow, type Session, type WebContents } from 'electron';
 import { ExtensionManager, type ExtensionHost } from './extensions/manager';
 import { registerCallistoApis } from './extensions/callisto-apis';
+import { registerBrowserApis } from './extensions/browser-apis';
+import { matchShortcut } from './shortcuts';
 import { Profile, type InternalPages } from './profile';
 import { ProfileRegistry } from './profile-registry';
 import { SessionStore } from './session-store';
@@ -85,6 +87,7 @@ export class ProfileManager implements ProfilesApi {
     profile.extensions = new ExtensionManager(profile, join(this.cfg.userDataDir, 'Profiles', id, 'Extensions'), this.extensionHost, { apiPreload: this.cfg.extensionApiPreload });
     profile.extensions.on('changed', () => BrowserWindowController.refreshAll());
     registerCallistoApis(profile.extensions, { windows: () => this.windowsOf(profile) });
+    const extensions = profile.extensions;
 
     const store = new SessionStore(profile.kv);
     const closedTabs = new ClosedTabs(store.load().closed);
@@ -101,6 +104,14 @@ export class ProfileManager implements ProfilesApi {
       },
     );
     closedTabs.onChange = () => saver.markDirty();
+    // APIs de extensiones sobre el historial, las cerradas, las descargas, la barra y los atajos (1.4.2)
+    extensions.browser = registerBrowserApis(extensions, {
+      windows: () => this.windowsOf(profile),
+      current: () => this.windowFor(profile, null),
+      closedTabs,
+      newWindow: (url) => void new BrowserWindowController(this.runtime(profile.id).ctx, { url }),
+      isBrowserShortcut,
+    });
     const rt: Runtime = { ctx: this.makeContext(profile, closedTabs, saver), saver, store, noticeShown: false };
     this.runtimes.set(id, rt);
     return rt;
@@ -197,6 +208,11 @@ export class ProfileManager implements ProfilesApi {
       if (!tab) return;
       (details as chrome.tabs.Tab & { groupId: number }).groupId = tab.groupId ?? -1;
       details.pinned = tab.pinned;
+      // La posición real en la ventana (la librería deja -1) y "resaltada" como la activa (1.4.2)
+      const win = BrowserWindowController.ofTab(tab);
+      if (win) details.index = win.tabs.indexOf(tab);
+      details.highlighted = details.active;
+      details.discarded = false;
     },
   };
 
@@ -344,4 +360,28 @@ export class ProfileManager implements ProfilesApi {
     }
     BrowserWindowController.refreshAll();
   }
+}
+
+/** ¿Un atajo de extensión ("Ctrl+Shift+Y") ya lo usa Callisto? Entonces la extensión no lo recibe, como en Chrome. */
+function isBrowserShortcut(shortcut: string): boolean {
+  const parts = shortcut.split('+');
+  const key = parts.pop()!;
+  const named: Record<string, [string, string]> = {
+    Comma: [',', 'Comma'],
+    Period: ['.', 'Period'],
+    Home: ['Home', 'Home'],
+    End: ['End', 'End'],
+    PageUp: ['PageUp', 'PageUp'],
+    PageDown: ['PageDown', 'PageDown'],
+    Space: [' ', 'Space'],
+    Insert: ['Insert', 'Insert'],
+    Delete: ['Delete', 'Delete'],
+    Up: ['ArrowUp', 'ArrowUp'],
+    Down: ['ArrowDown', 'ArrowDown'],
+    Left: ['ArrowLeft', 'ArrowLeft'],
+    Right: ['ArrowRight', 'ArrowRight'],
+  };
+  const [k, code] = /^[A-Z]$/.test(key) ? [key.toLowerCase(), `Key${key}`] : /^[0-9]$/.test(key) ? [key, `Digit${key}`] : (named[key] ?? [key, key]);
+  const input = { type: 'keyDown', key: k, code, control: parts.includes('Ctrl'), alt: parts.includes('Alt'), shift: parts.includes('Shift'), meta: false, isAutoRepeat: false } as unknown as Electron.Input;
+  return matchShortcut(input, { fromPage: true, isLoading: false }) !== null || matchShortcut(input, { fromPage: false, isLoading: false }) !== null;
 }

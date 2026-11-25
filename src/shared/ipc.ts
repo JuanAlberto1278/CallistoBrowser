@@ -117,7 +117,7 @@ export interface PermissionPrompt {
 /** Sugerencia de la barra de direcciones. */
 export interface Suggestion {
   /** 'tab': una pestaña abierta (elegirla la activa, no navega); 'bookmark': un favorito. */
-  kind: 'search' | 'url' | 'history' | 'tab' | 'bookmark';
+  kind: 'search' | 'url' | 'history' | 'tab' | 'bookmark' | 'extension';
   /** Pestaña abierta a la que lleva (solo 'tab'). */
   tabId?: number;
   /** Línea principal (título, dirección o texto buscado). */

@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.2',
+    date: '2026-11-25',
+    items: [
+      'Más extensiones funcionan: historial, pestañas cerradas, búsqueda, borrar datos, iniciar sesión con otros servicios, guardar páginas, proxy y descargas.',
+      'Las extensiones reciben el aviso de instalación (las que abren su página de bienvenida o se configuran al instalarse).',
+      'Los atajos de teclado de las extensiones funcionan, y su palabra clave en la barra de direcciones (por ejemplo, escribir la palabra y un espacio).',
+      'El menú del botón de una extensión muestra sus propias opciones.',
+      'Una descarga pedida por una extensión pasa por la misma autorización que cualquier otra, y dice qué extensión la pidió.',
+      'Se quitó la tabla de «Compatibilidad probada»: si una extensión usa algo que Callisto todavía no tiene, lo dice en su tarjeta.',
+    ],
+  },
+  {
     version: '1.4.1',
     date: '2026-11-25',
     items: [

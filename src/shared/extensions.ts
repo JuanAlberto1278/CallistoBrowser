@@ -1,4 +1,4 @@
-// Extensiones (V0.10): tipos, compatibilidad medida y textos de permisos. Lógica pura, compartida por el proceso
+// Extensiones (V0.10): tipos, APIs que faltan y textos de permisos. Lógica pura, compartida por el proceso
 // principal, la interfaz y callisto://extensions. Ver docs/10-v0.10-extensiones.md.
 
 export const WEBSTORE_ORIGIN = 'https://chromewebstore.google.com';
@@ -27,52 +27,51 @@ export interface ExtensionManifest {
 
 /**
  * APIs que una extensión puede pedir y que en Callisto NO están disponibles, con el motivo. Medido con la extensión
- * sonda (tests/fixtures/extensions/probe) en Electron 45.4.1 + electron-chrome-extensions 4.10.0: el espacio de nombres
- * no existe, o existe pero la llamada falla. Una prueba end-to-end vuelve a medirlo y avisa si cambia.
+ * sonda (tests/fixtures/extensions/probe): el espacio de nombres no existe, o existe pero la llamada falla. Una prueba
+ * end-to-end vuelve a medirlo y avisa si cambia. (1.4.2: historial, sesiones, búsqueda, borrar datos, identidad, MHTML,
+ * proxy y pantallas pasaron a funcionar; ver CALLISTO_APIS.)
  */
 export const UNSUPPORTED_APIS: Record<string, string> = {
-  browsingData: 'borrar datos de navegación',
-  certificateProvider: 'certificados de cliente',
   contentSettings: 'cambiar permisos de sitios',
   debugger: 'depurar páginas',
   declarativeContent: 'reglas según el contenido de la página',
   desktopCapture: 'capturar la pantalla',
-  documentScan: 'escáneres',
-  'enterprise.deviceAttributes': 'equipos administrados (ChromeOS)',
-  'enterprise.hardwarePlatform': 'equipos administrados (ChromeOS)',
-  'enterprise.networkingAttributes': 'equipos administrados (ChromeOS)',
-  'enterprise.platformKeys': 'equipos administrados (ChromeOS)',
-  fileBrowserHandler: 'archivos (ChromeOS)',
-  fileSystemProvider: 'sistemas de archivos (ChromeOS)',
   fontSettings: 'configuración de fuentes',
   gcm: 'mensajes push de Google (GCM)',
-  history: 'historial',
-  identity: 'iniciar sesión con Google desde la extensión',
-  'identity.email': 'iniciar sesión con Google desde la extensión',
-  loginState: 'estado de sesión (ChromeOS)',
   nativeMessaging: 'comunicarse con programas instalados en Windows',
-  pageCapture: 'guardar páginas como MHTML',
-  platformKeys: 'certificados (ChromeOS)',
-  printing: 'imprimir',
-  printingMetrics: 'impresión (ChromeOS)',
-  processes: 'procesos del navegador',
-  proxy: 'configuración de proxy',
   readingList: 'lista de lectura',
-  search: 'buscar con el buscador del navegador',
-  sessions: 'pestañas cerradas recientemente',
   sidePanel: 'panel lateral',
-  'system.display': 'información de pantallas',
   tabCapture: 'capturar pestañas',
   tts: 'texto a voz',
   ttsEngine: 'motor de texto a voz',
   userScripts: 'scripts de usuario',
-  vpnProvider: 'VPN (ChromeOS)',
-  wallpaper: 'fondo de pantalla (ChromeOS)',
   webAuthenticationProxy: 'proxy de autenticación web',
 };
 
+/**
+ * APIs que Chrome tampoco tiene en Windows (solo ChromeOS) o solo en sus versiones de prueba: una extensión para Windows
+ * no las necesita, así que no se avisan ni cuentan como faltantes.
+ */
+export const NOT_ON_WINDOWS_APIS = [
+  'certificateProvider',
+  'documentScan',
+  'enterprise.deviceAttributes',
+  'enterprise.hardwarePlatform',
+  'enterprise.networkingAttributes',
+  'enterprise.platformKeys',
+  'fileBrowserHandler',
+  'fileSystemProvider',
+  'loginState',
+  'platformKeys',
+  'printing',
+  'printingMetrics',
+  'processes',
+  'vpnProvider',
+  'wallpaper',
+] as const;
+
 /** APIs que Callisto agrega sobre sus propios sistemas (no las trae Electron ni la librería). */
-export const CALLISTO_APIS = ['bookmarks', 'tabGroups'] as const;
+export const CALLISTO_APIS = ['bookmarks', 'tabGroups', 'history', 'sessions', 'search', 'browsingData', 'identity', 'identity.email', 'pageCapture', 'proxy', 'system.display', 'downloads', 'topSites', 'omnibox'] as const;
 
 /** Permisos pedidos por la extensión que no están disponibles (los opcionales también cuentan). */
 export function unsupportedPermissions(manifest: ExtensionManifest): Array<{ permission: string; what: string; optional: boolean }> {
@@ -93,29 +92,6 @@ export function unsupportedPermissions(manifest: ExtensionManifest): Array<{ per
   }
   return out;
 }
-
-/**
- * Extensiones probadas de verdad en la V0.1 (instaladas desde la tienda, con pruebas funcionales), para mostrar en
- * callisto://extensions. Grammarly y OneTab cambian con la V0.10: OneTab ya tiene bookmarks y tabGroups.
- */
-export const TESTED_EXTENSIONS: Array<{ id: string; name: string; status: 'ok' | 'partial' | 'broken'; note: string }> = [
-  { id: 'ddkjiahejlhfcafbddmgiahcphecmpfh', name: 'uBlock Origin Lite', status: 'ok', note: 'Bloquea anuncios y rastreadores.' },
-  { id: 'bgnkhhnnamicmpeenaelnjfhikgbkllg', name: 'AdGuard AdBlocker', status: 'ok', note: 'Bloquea anuncios.' },
-  { id: 'pkehgijcmpdhfbdbbnkijodmdjhbjlgp', name: 'Privacy Badger', status: 'ok', note: 'Bloqueó 4 de 4 rastreadores de prueba.' },
-  { id: 'eimadpbcbfnmbkopoojfekhnkhdbieeh', name: 'Dark Reader', status: 'ok', note: 'Aplica el tema oscuro (sin la opción de fuentes).' },
-  { id: 'nffaoalbilbmmfgbnbgppjihopabppdk', name: 'Video Speed Controller', status: 'ok', note: 'Controlador sobre los videos.' },
-  { id: 'bcjindcccaagfpapjjmafapmmgkkhgoa', name: 'JSON Formatter', status: 'ok', note: 'Formatea respuestas JSON.' },
-  { id: 'fmkadmapgofadopljbjfkapdkoienihi', name: 'React Developer Tools', status: 'ok', note: 'Instala y abre; no se probó dentro de las herramientas de desarrollo.' },
-  { id: 'aapbdbdomjkkjkaonfhkkikfgjllcleb', name: 'Google Translate', status: 'ok', note: 'Instala y abre su ventana.' },
-  { id: 'gppongmhjkpfnbhagpmjfkannfbllamg', name: 'Wappalyzer', status: 'ok', note: 'Instala y abre su ventana.' },
-  { id: 'gebbhagfogifgggkldgodflihgfeippi', name: 'Return YouTube Dislike', status: 'ok', note: 'Sin el inicio de sesión con Patreon/GitHub.' },
-  { id: 'chphlpgkkbolifaimnlloiipkdnihall', name: 'OneTab', status: 'partial', note: 'Sin lista de lectura.' },
-  { id: 'kbfnbcaeplbcioakkpcpgfkobkghlhen', name: 'Grammarly', status: 'partial', note: 'Se inyecta en las páginas; sin panel lateral ni inicio de sesión con Google.' },
-  { id: 'nngceckbapebfimnlniiiahkandclblb', name: 'Bitwarden', status: 'partial', note: 'Su ventana funciona; sin panel lateral.' },
-  { id: 'ghbmnnjooekpmoecnnnilnnbdlolhkhi', name: 'Google Docs Offline', status: 'partial', note: 'Instala; no se pudo comprobar el modo sin conexión.' },
-  { id: 'aeblfdkhhhdcdjpifhhbdiojplfjncoa', name: '1Password', status: 'partial', note: 'Solo con cuenta en la nube: no se conecta con la app de escritorio.' },
-  { id: 'dhdgffkkebhmkfjojejmpbldmpobfkfo', name: 'Tampermonkey', status: 'broken', note: 'No ejecuta scripts (requiere la API de scripts de usuario).' },
-];
 
 // ---------------------------------------------------------------- permisos en palabras
 
@@ -222,7 +198,6 @@ export interface ExtensionInfo {
   warnings: string[];
   unsupported: Array<{ permission: string; what: string; optional: boolean }>;
   /** Probada en la V0.1, si corresponde. */
-  tested: { status: 'ok' | 'partial' | 'broken'; note: string } | null;
   hasOptions: boolean;
   storeUrl: string;
   installed: number;

@@ -20,6 +20,20 @@ export interface DownloadRequest {
   /** Ventana donde se pregunta (la asigna quien escucha 'request'). */
   windowId: number | null;
   dangerous: boolean;
+  /** La pidió una extensión (chrome.downloads.download): su nombre, para mostrarlo en el pedido. */
+  byExtension?: string;
+}
+
+/** Descarga pedida por una extensión, esperando que el usuario la autorice. */
+interface ExtensionWait {
+  url: string;
+  extension: string;
+  /** Nombre (o ruta relativa dentro de la carpeta de descargas) que pidió la extensión. */
+  filename: string | null;
+  requestId: number | null;
+  timer: NodeJS.Timeout;
+  resolve(entryId: number): void;
+  reject(e: Error): void;
 }
 
 interface Expected {
@@ -68,6 +82,7 @@ export class DownloadManager extends EventEmitter<{ changed: []; request: [Downl
   private readonly reserved = new Set<string>();
   private seq = 0;
   private changedQueued = false;
+  private extensionWaits: ExtensionWait[] = [];
 
   constructor(
     private readonly session: Session,
@@ -127,6 +142,17 @@ export class DownloadManager extends EventEmitter<{ changed: []; request: [Downl
       windowId: null,
       dangerous: isDangerousFile(filename),
     };
+    // ¿La pidió una extensión? Se pregunta igual, diciendo cuál
+    const wait = this.extensionWaits.find((w) => w.requestId === null && w.url === firstUrl);
+    if (wait) {
+      clearTimeout(wait.timer);
+      wait.requestId = req.id;
+      req.byExtension = wait.extension;
+      if (wait.filename) {
+        req.filename = sanitizeFileName(basename(wait.filename.replace(/\\/g, '/')));
+        req.dangerous = isDangerousFile(req.filename);
+      }
+    }
     this.requests.push(req);
     this.emit('request', req);
     this.queueChanged();
@@ -147,23 +173,38 @@ export class DownloadManager extends EventEmitter<{ changed: []; request: [Downl
     return i >= 0 ? this.requests.splice(i, 1)[0] : undefined;
   }
 
+  /** La extensión que pidió una descarga se entera de la respuesta del usuario. */
+  private settleExtension(requestId: number, entryId: number | null): void {
+    const wait = this.extensionWaits.find((w) => w.requestId === requestId);
+    if (!wait) return;
+    this.extensionWaits = this.extensionWaits.filter((w) => w !== wait);
+    if (entryId === null) wait.reject(new Error('Download canceled by the user.'));
+    else wait.resolve(entryId);
+  }
+
   /** Rechazada: no se guarda nada (la original ya se había cancelado). */
   deny(id: number): void {
-    if (this.take(id)) this.queueChanged();
+    if (!this.take(id)) return;
+    this.settleExtension(id, null);
+    this.queueChanged();
   }
 
   /** Rechaza todos los pedidos de una ventana que se cierra. */
   denyForWindow(windowId: number): void {
-    const before = this.requests.length;
+    const gone = this.requests.filter((r) => r.windowId === windowId);
+    if (!gone.length) return;
     this.requests = this.requests.filter((r) => r.windowId !== windowId);
-    if (this.requests.length !== before) this.queueChanged();
+    for (const r of gone) this.settleExtension(r.id, null);
+    this.queueChanged();
   }
 
   /** Rechaza los pedidos que quedaron sin ventana donde preguntar. */
   denyWithoutWindow(): void {
-    const before = this.requests.length;
+    const gone = this.requests.filter((r) => r.windowId === null);
+    if (!gone.length) return;
     this.requests = this.requests.filter((r) => r.windowId !== null);
-    if (this.requests.length !== before) this.queueChanged();
+    for (const r of gone) this.settleExtension(r.id, null);
+    this.queueChanged();
   }
 
   /** Autorizada: se vuelve a pedir y se guarda en la carpeta de descargas (o en `customPath`, "Guardar como…"). */
@@ -171,8 +212,40 @@ export class DownloadManager extends EventEmitter<{ changed: []; request: [Downl
     const req = this.take(id);
     if (!req) return undefined;
     const entryId = this.startAuthorized({ url: req.url, pageUrl: req.pageUrl, filename: req.filename, mime: req.mime, totalBytes: req.totalBytes, sourceId: req.sourceId }, customPath);
+    this.settleExtension(id, entryId);
     this.queueChanged();
     return entryId;
+  }
+
+  /**
+   * chrome.downloads.download: Chromium empieza la descarga (desde la página de la extensión, que puede bajar sus
+   * propias URL blob:) y la guardia de siempre la cancela y le pregunta al usuario, diciendo qué extensión la pidió.
+   * Resuelve con el número de descarga cuando el usuario la autoriza; se rechaza si no.
+   */
+  requestFromExtension(source: WebContents | null, url: string, extension: string, filename: string | null): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const wait: ExtensionWait = {
+        url,
+        extension,
+        filename,
+        requestId: null,
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          this.extensionWaits = this.extensionWaits.filter((w) => w !== wait);
+          reject(new Error('Download failed to start.'));
+        }, REDOWNLOAD_TIMEOUT_MS),
+      };
+      this.extensionWaits.push(wait);
+      try {
+        if (source && !source.isDestroyed()) source.downloadURL(url);
+        else this.session.downloadURL(url);
+      } catch (e) {
+        clearTimeout(wait.timer);
+        this.extensionWaits = this.extensionWaits.filter((w) => w !== wait);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    });
   }
 
   /** Descarga elegida explícitamente por el usuario en Callisto ("Guardar imagen como…"): ya está autorizada. */
@@ -428,6 +501,11 @@ export class DownloadManager extends EventEmitter<{ changed: []; request: [Downl
     const r = this.store.get(id);
     if (!r || this.live.has(id) || r.state === 'starting' || r.state === 'waiting_click') return;
     this.store.remove(id);
+    this.queueChanged();
+  }
+
+  /** Algo cambió fuera del gestor (p. ej. una extensión borró el archivo): se vuelve a avisar. */
+  touch(): void {
     this.queueChanged();
   }
 

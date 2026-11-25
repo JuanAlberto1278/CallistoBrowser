@@ -1206,7 +1206,7 @@ export class BrowserWindowController {
     // La carpeta predeterminada se llama "Downloads" en disco aunque Windows en español la muestre como "Descargas"
     const folderName = this.ctx.profile.settings.downloadDir === null ? 'Descargas' : basename(dir) || dir;
     return {
-      prompt: r ? { id: r.id, filename: r.filename, site: siteOf(r.url, r.pageUrl), totalBytes: r.totalBytes, mime: r.mime, dangerous: r.dangerous, folderName } : null,
+      prompt: r ? { id: r.id, filename: r.filename, site: r.byExtension ? `la extensión «${r.byExtension}»` : siteOf(r.url, r.pageUrl), totalBytes: r.totalBytes, mime: r.mime, dangerous: r.dangerous, folderName } : null,
       waiting: Math.max(0, requests.length - 1),
       panelOpen: this.downloadsPanelOpen,
       items: this.downloadsPanelOpen ? dm.entries({ limit: 8 }) : [],
@@ -1347,7 +1347,11 @@ export class BrowserWindowController {
     // Una pestaña en segundo plano no debería recibir teclas, pero por las dudas solo se atiende a la activa.
     if (source && source !== this.activeTab) return;
     const action = matchShortcut(input, { fromPage, isLoading: this.activeTab.webContents.isLoading() });
-    if (!action) return;
+    if (!action) {
+      // Atajos de las extensiones (chrome.commands): solo los que no usa Callisto
+      if (this.ctx.profile.extensions?.browser?.runCommand(input, this.activeTab.webContents)) event.preventDefault();
+      return;
+    }
     event.preventDefault();
     this.run(action);
   }
@@ -1434,14 +1438,24 @@ export class BrowserWindowController {
     const info = ext?.list().find((e) => e.id === extensionId);
     if (!ext || !info) return;
     const options = ext.optionsUrl(extensionId);
-    this.popup([
+    // Los ítems que la extensión agrega al menú de su botón (chrome.contextMenus con contexts "action"), después del nombre
+    const own = ext.browser?.actionMenuItems(extensionId) ?? [];
+    const menu = Menu.buildFromTemplate([
       { label: info.name.replace(/&/g, '&&'), click: () => this.newTab({ url: info.storeUrl }) },
       { type: 'separator' },
+    ]);
+    if (own.length) {
+      for (const item of own) menu.append(item);
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+    for (const item of [
       { label: 'Opciones', enabled: !!options, click: () => options && this.newTab({ url: options }) },
       { label: 'Administrar extensiones', click: () => this.openInternalPage('extensions') },
-      { type: 'separator' },
+      { type: 'separator' as const },
       { label: 'Quitar de Callisto…', click: () => void ext.removeWithConfirmation(extensionId, null) },
-    ]);
+    ])
+      menu.append(new MenuItem(item));
+    menu.popup({ window: this.win });
   }
 
   /** Menú del botón de perfil: cambiar de perfil, ventana privada, agregar o administrar perfiles. */

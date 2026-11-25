@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: auditoría de APIs",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto: usa de verdad las APIs (1.4.2).",
+  "permissions": [
+    "downloads",
+    "tabs",
+    "topSites",
+    "offscreen",
+    "storage",
+    "contextMenus",
+    "scripting",
+    "alarms",
+    "notifications",
+    "history",
+    "sessions",
+    "search",
+    "browsingData",
+    "identity",
+    "pageCapture",
+    "proxy",
+    "system.display",
+    "cookies"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "action": {
+    "default_title": "Auditoría"
+  },
+  "omnibox": {
+    "keyword": "aud"
+  },
+  "commands": {
+    "hacer-algo": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y"
+      },
+      "description": "Hacer algo"
+    }
+  }
+}

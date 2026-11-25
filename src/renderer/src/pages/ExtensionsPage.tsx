@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ExtensionsSnapshot } from '../../../shared/internal-api';
-import { TESTED_EXTENSIONS, UNSUPPORTED_APIS, type ExtensionInfo } from '../../../shared/extensions';
+import type { ExtensionInfo } from '../../../shared/extensions';
 import { TrashIcon } from '../icons';
-
-const STATUS_TEXT = { ok: 'Funciona', partial: 'Funciona en parte', broken: 'No funciona' } as const;
 
 function ExtensionCard({ ext, onChanged }: { ext: ExtensionInfo; onChanged: () => void }) {
   const api = window.callistoInternal.extensions;
@@ -22,7 +20,6 @@ function ExtensionCard({ ext, onChanged }: { ext: ExtensionInfo; onChanged: () =
           <div className="ext-name">
             <span data-testid="extension-name">{ext.name}</span>
             <span className="muted small">{ext.version}</span>
-            {ext.tested && <span className={`tag status-${ext.tested.status}`}>{STATUS_TEXT[ext.tested.status]}</span>}
           </div>
           <div className="muted small ext-desc">{ext.description}</div>
           {ext.error && (
@@ -97,11 +94,6 @@ function ExtensionCard({ ext, onChanged }: { ext: ExtensionInfo; onChanged: () =
               </ul>
             </div>
           )}
-          {ext.tested && (
-            <div>
-              <strong>Probada en Callisto:</strong> {ext.tested.note}
-            </div>
-          )}
           <div className="muted small">
             ID: {ext.id} ·{' '}
             <a href="#" onClick={(e) => { e.preventDefault(); api.openStore(ext.id); }}>
@@ -130,7 +122,6 @@ export function ExtensionsPage() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [load]);
 
-  const installed = new Set(snap?.items.map((i) => i.id) ?? []);
 
   return (
     <div className="page">
@@ -180,40 +171,6 @@ export function ExtensionsPage() {
       )}
       {snap?.items.map((ext) => <ExtensionCard key={`${ext.id}-${ext.updated}`} ext={ext} onChanged={load} />)}
 
-      <section className="card" aria-labelledby="ext-tested">
-        <h2 id="ext-tested">Compatibilidad probada</h2>
-        <p className="muted small">
-          Extensiones populares instaladas desde la Chrome Web Store y probadas en Callisto. Callisto usa el motor de Chromium, pero no todas las funciones
-          de Chrome para extensiones.
-        </p>
-        <table data-testid="extensions-tested">
-          <thead>
-            <tr>
-              <th>Extensión</th>
-              <th>Estado</th>
-              <th>Notas</th>
-            </tr>
-          </thead>
-          <tbody>
-            {TESTED_EXTENSIONS.map((t) => (
-              <tr key={t.id}>
-                <td>
-                  <a href="#" onClick={(e) => { e.preventDefault(); api.openStore(t.id); }}>
-                    {t.name}
-                  </a>
-                  {installed.has(t.id) && <span className="tag">instalada</span>}
-                </td>
-                <td className={`status-${t.status}`}>{STATUS_TEXT[t.status]}</td>
-                <td className="small">{t.note}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <details className="ext-missing">
-          <summary>Funciones de Chrome que no están en Callisto</summary>
-          <p className="muted small">{[...new Set(Object.values(UNSUPPORTED_APIS))].join(' · ')}</p>
-        </details>
-      </section>
     </div>
   );
 }

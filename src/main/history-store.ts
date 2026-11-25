@@ -49,12 +49,32 @@ const DAY = 24 * 60 * 60 * 1000;
 /** Como Chrome: el historial guarda los últimos 90 días. */
 export const RETENTION_DAYS = 90;
 
+/** Cambios del historial (para chrome.history.onVisited / onVisitRemoved). */
+export type HistoryChange = { type: 'visited'; url: string } | { type: 'removed'; allHistory: boolean; urls: string[] };
+
 export class HistoryStore {
+  private readonly listeners = new Set<(c: HistoryChange) => void>();
+
   constructor(private readonly db: DatabaseSync, private readonly now: () => number = Date.now) {}
 
-  addVisit(url: string, opts: { typed?: boolean; title?: string } = {}): void {
+  onChange(fn: (c: HistoryChange) => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private notify(c: HistoryChange): void {
+    for (const fn of this.listeners) {
+      try {
+        fn(c);
+      } catch {
+        /* un oyente no corta a los demás */
+      }
+    }
+  }
+
+  addVisit(url: string, opts: { typed?: boolean; title?: string; time?: number } = {}): void {
     if (!isRecordable(url)) return;
-    const time = this.now();
+    const time = opts.time ?? this.now();
     const typed = opts.typed ? 1 : 0;
     this.db.prepare(
       `INSERT INTO urls (url, host, title, visit_count, typed_count, last_visit) VALUES (?, ?, ?, 1, ?, ?)
@@ -63,6 +83,37 @@ export class HistoryStore {
     ).run(url, hostOf(url), opts.title ?? '', typed, time);
     const row = this.db.prepare('SELECT id FROM urls WHERE url = ?').get(url) as { id: number };
     this.db.prepare('INSERT INTO visits (url_id, time, typed) VALUES (?, ?, ?)').run(row.id, time, typed);
+    this.notify({ type: 'visited', url });
+  }
+
+  /**
+   * Direcciones (no visitas) con su última visita en [startTime, endTime), las más recientes primero
+   * (chrome.history.search). Con texto, el que esté en el título o la dirección.
+   */
+  urls(opts: { text?: string; startTime?: number; endTime?: number; limit?: number } = {}): Array<UrlRow & { id: number }> {
+    const where = ['last_visit >= ?', 'last_visit < ?'];
+    const args: (string | number)[] = [opts.startTime ?? 0, opts.endTime ?? Number.MAX_SAFE_INTEGER];
+    const q = opts.text?.trim() ?? '';
+    if (q) {
+      where.push("(title LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\')");
+      const like = `%${likeEscape(q)}%`;
+      args.push(like, like);
+    }
+    const limit = Math.max(1, Math.min(opts.limit ?? 100, 10_000));
+    return this.db
+      .prepare(`SELECT id, url, title, host, visit_count AS visitCount, typed_count AS typedCount, last_visit AS lastVisit, icon_url AS iconUrl FROM urls WHERE ${where.join(' AND ')} ORDER BY last_visit DESC LIMIT ${limit}`)
+      .all(...args) as unknown as Array<UrlRow & { id: number }>;
+  }
+
+  /** La dirección guardada (id, contadores), si existe. */
+  urlRow(url: string): (UrlRow & { id: number }) | undefined {
+    return this.db.prepare('SELECT id, url, title, host, visit_count AS visitCount, typed_count AS typedCount, last_visit AS lastVisit, icon_url AS iconUrl FROM urls WHERE url = ?').get(url) as unknown as (UrlRow & { id: number }) | undefined;
+  }
+
+  /** Visitas a una dirección, de la más antigua a la más reciente (chrome.history.getVisits). */
+  visitsOf(url: string): Array<{ id: number; urlId: number; time: number; typed: boolean }> {
+    const rows = this.db.prepare('SELECT v.id, v.url_id AS urlId, v.time, v.typed FROM visits v JOIN urls u ON u.id = v.url_id WHERE u.url = ? ORDER BY v.time, v.id').all(url) as Array<{ id: number; urlId: number; time: number; typed: number }>;
+    return rows.map((r) => ({ ...r, typed: r.typed === 1 }));
   }
 
   setTitle(url: string, title: string): void {
@@ -112,17 +163,20 @@ export class HistoryStore {
 
   /** Todas las visitas a una dirección. */
   deleteUrl(url: string): void {
-    this.db.prepare('DELETE FROM urls WHERE url = ?').run(url);
+    const removed = this.db.prepare('DELETE FROM urls WHERE url = ?').run(url).changes > 0;
+    if (removed) this.notify({ type: 'removed', allHistory: false, urls: [url] });
   }
 
   /** Visitas con tiempo en [from, to). */
   deleteRange(from: number, to: number): void {
     this.db.prepare('DELETE FROM visits WHERE time >= ? AND time < ?').run(from, to);
-    this.cleanup();
+    const gone = this.cleanup();
+    if (gone.length) this.notify({ type: 'removed', allHistory: false, urls: gone });
   }
 
   deleteAll(): void {
     this.db.exec('DELETE FROM visits; DELETE FROM urls;');
+    this.notify({ type: 'removed', allHistory: true, urls: [] });
   }
 
   /** Borra lo que tiene más de RETENTION_DAYS días. */
@@ -131,8 +185,9 @@ export class HistoryStore {
     this.cleanup();
   }
 
-  /** Quita direcciones sin visitas y recalcula contadores. */
-  private cleanup(): void {
+  /** Quita direcciones sin visitas y recalcula contadores. Devuelve las direcciones que se quitaron. */
+  private cleanup(): string[] {
+    const gone = (this.db.prepare('SELECT url FROM urls WHERE id NOT IN (SELECT DISTINCT url_id FROM visits)').all() as Array<{ url: string }>).map((r) => r.url);
     this.db.exec(`
       DELETE FROM urls WHERE id NOT IN (SELECT DISTINCT url_id FROM visits);
       UPDATE urls SET
@@ -140,6 +195,7 @@ export class HistoryStore {
         typed_count = (SELECT count(*) FROM visits WHERE url_id = urls.id AND typed = 1),
         last_visit = (SELECT max(time) FROM visits WHERE url_id = urls.id);
     `);
+    return gone;
   }
 
   /** Favicon conocido para una dirección (o, si no hay, para su sitio). */

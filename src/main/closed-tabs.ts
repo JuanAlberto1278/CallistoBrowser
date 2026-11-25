@@ -6,9 +6,13 @@ export interface TabSnapshot {
   index: number;
 }
 
-export type ClosedEntry =
+export type ClosedEntry = (
   | { kind: 'tab'; windowId: number; index: number; tab: TabSnapshot }
-  | { kind: 'window'; tabs: TabSnapshot[]; active: number };
+  | { kind: 'window'; tabs: TabSnapshot[]; active: number }
+) & {
+  /** Cuándo se cerró (ms; 1.4.2, para chrome.sessions: las sesiones anteriores no lo tienen). */
+  time?: number;
+};
 
 const LIMIT = 25;
 
@@ -39,9 +43,9 @@ export class ClosedTabs {
     if (entry.kind === 'window') {
       const tabs = entry.tabs.filter(isRestorable);
       if (tabs.length === 0) return;
-      if (tabs.length !== entry.tabs.length) entry = { kind: 'window', tabs, active: 0 };
+      if (tabs.length !== entry.tabs.length) entry = { kind: 'window', tabs, active: 0, time: entry.time };
     }
-    this.stack.push(entry);
+    this.stack.push({ ...entry, time: entry.time ?? Date.now() });
     if (this.stack.length > LIMIT) this.stack.shift();
     this.onChange?.();
   }

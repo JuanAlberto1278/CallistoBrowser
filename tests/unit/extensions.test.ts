@@ -280,10 +280,10 @@ describe('permisos y compatibilidad (en palabras)', () => {
   it('lo que falta en Callisto, requerido u opcional', () => {
     expect(unsupportedPermissions({ permissions: ['storage', 'sidePanel', 'identity'], optional_permissions: ['userScripts', 'sidePanel'] })).toEqual([
       { permission: 'sidePanel', what: 'panel lateral', optional: false },
-      { permission: 'identity', what: 'iniciar sesión con Google desde la extensión', optional: false },
       { permission: 'userScripts', what: 'scripts de usuario', optional: true },
     ]);
-    expect(unsupportedPermissions({ permissions: ['bookmarks', 'tabGroups', 'tabs'] })).toEqual([]);
+    // identity funciona desde la 1.4.2 (launchWebAuthFlow)
+    expect(unsupportedPermissions({ permissions: ['bookmarks', 'tabGroups', 'tabs', 'identity'] })).toEqual([]);
   });
 
   it('nombres traducidos (__MSG_…__)', () => {

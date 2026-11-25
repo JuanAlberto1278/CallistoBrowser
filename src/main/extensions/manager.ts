@@ -6,10 +6,11 @@ import { ElectronChromeExtensions } from 'electron-chrome-extensions';
 import { installChromeWebStore } from 'electron-chrome-web-store';
 import { compareVersions, downloadCrx, ExtensionRegistry, InstallError, parseUpdateCheck, unpackCrx, updateCheckUrl, type ExtensionRecord, type Fetcher } from './installer';
 import { CrxError } from './crx';
+import type { BrowserApis } from './browser-apis';
 import { ZipError } from './unzip';
 import type { Profile } from '../profile';
 import { invisibleForTests } from '../test-mode';
-import { TESTED_EXTENSIONS, WEBSTORE_ORIGIN, isExtensionId, localizedText, permissionWarnings, unsupportedPermissions, type ExtensionInfo, type ExtensionInstallPrompt, type ExtensionManifest } from '../../shared/extensions';
+import { WEBSTORE_ORIGIN, isExtensionId, localizedText, permissionWarnings, unsupportedPermissions, type ExtensionInfo, type ExtensionInstallPrompt, type ExtensionManifest } from '../../shared/extensions';
 
 // Extensiones de un perfil (V0.10). Ver docs/10-v0.10-extensiones.md.
 //
@@ -72,12 +73,21 @@ function overrideStoreUninstall(): void {
   });
 }
 
-export class ExtensionManager extends EventEmitter<{ changed: []; 'groups-maybe-changed': [] }> {
+export class ExtensionManager extends EventEmitter<{
+  changed: [];
+  'groups-maybe-changed': [];
+  /** Se instaló (previousVersion null) o se actualizó una extensión: para chrome.runtime.onInstalled. */
+  installed: [id: string, previousVersion: string | null];
+  /** Extensiones cargadas al abrir el perfil: para chrome.runtime.onStartup. */
+  started: [ids: string[]];
+}> {
   static fromSession(session: Session): ExtensionManager | undefined {
     return managers.get(session);
   }
 
   readonly chrome: ElectronChromeExtensions;
+  /** APIs que Callisto agrega en la 1.4.2 (atajos, palabra clave en la barra, menú del botón): ver browser-apis.ts. */
+  browser: BrowserApis | null = null;
   readonly registry: ExtensionRegistry;
   private readonly errors = new Map<string, string>();
   private readonly installing = new Set<string>();
@@ -185,6 +195,7 @@ export class ExtensionManager extends EventEmitter<{ changed: []; 'groups-maybe-
 
   private async loadAll(): Promise<void> {
     for (const r of this.registry.all()) if (r.enabled) await this.loadOne(r);
+    this.emit('started', this.registry.all().filter((r) => r.enabled && this.profile.session.extensions.getExtension(r.id)).map((r) => r.id));
     this.emit('changed');
     if (!this.store && !process.env.CALLISTO_TEST_INVISIBLE) this.scheduleUpdates();
   }
@@ -209,8 +220,10 @@ export class ExtensionManager extends EventEmitter<{ changed: []; 'groups-maybe-
       const name = localizedText(unpacked.manifest.name, this.messages(join(this.dir, id, unpacked.dir), unpacked.manifest)) || id;
       const ses = this.profile.session;
       if (ses.extensions.getExtension(id)) ses.extensions.removeExtension(id);
+      const previousVersion = this.registry.get(id)?.version ?? null;
       const previous = this.registry.put(id, name, unpacked.version, unpacked.dir);
       const record = this.registry.get(id)!;
+      this.emit('installed', id, previousVersion);
       await this.loadOne(record);
       if (previous) rmSync(join(this.dir, id, previous), { recursive: true, force: true });
       this.emit('changed');
@@ -389,7 +402,6 @@ export class ExtensionManager extends EventEmitter<{ changed: []; 'groups-maybe-
       const manifest = this.manifestOf(r) ?? {};
       const path = this.path(r);
       const messages = this.messages(path, manifest);
-      const tested = TESTED_EXTENSIONS.find((t) => t.id === r.id);
       return {
         id: r.id,
         name: r.name,
@@ -401,7 +413,6 @@ export class ExtensionManager extends EventEmitter<{ changed: []; 'groups-maybe-
         icon: this.iconOf(path, manifest),
         warnings: permissionWarnings(manifest),
         unsupported: unsupportedPermissions(manifest),
-        tested: tested ? { status: tested.status, note: tested.note } : null,
         hasOptions: !!(manifest.options_ui?.page || manifest.options_page),
         storeUrl: `${WEBSTORE_ORIGIN}/detail/${r.id}`,
         installed: r.installed,
