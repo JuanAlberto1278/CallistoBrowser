@@ -278,9 +278,9 @@ describe('permisos y compatibilidad (en palabras)', () => {
   });
 
   it('lo que falta en Callisto, requerido u opcional', () => {
-    expect(unsupportedPermissions({ permissions: ['storage', 'tts', 'identity'], optional_permissions: ['userScripts', 'tts'] })).toEqual([
+    expect(unsupportedPermissions({ permissions: ['storage', 'tts', 'identity'], optional_permissions: ['debugger', 'tts'] })).toEqual([
       { permission: 'tts', what: 'texto a voz', optional: false },
-      { permission: 'userScripts', what: 'scripts de usuario', optional: true },
+      { permission: 'debugger', what: 'depurar páginas', optional: true },
     ]);
     // identity funciona desde la 1.4.2 (launchWebAuthFlow)
     expect(unsupportedPermissions({ permissions: ['bookmarks', 'tabGroups', 'tabs', 'identity'] })).toEqual([]);

@@ -30,6 +30,15 @@ const bridge = {
   removeListener: (name: string, cb: (...args: unknown[]) => void) => {
     listeners.get(name)?.delete(cb);
   },
+  /** ¿El usuario permitió los scripts de usuario de esta extensión? (síncrono, como lo necesita la API; null: no se sabe) */
+  userScriptsAllowed: (extensionId: string): boolean | null => {
+    try {
+      const v: unknown = ipcRenderer.sendSync('callisto-us:allowed', extensionId);
+      return typeof v === 'boolean' ? v : null;
+    } catch {
+      return null;
+    }
+  },
   /** Puerto con un programa instalado (1.4.3), con el protocolo de mensajes de electron-chrome-extensions. */
   nativeConnect: (extensionId: string, application: string, onMessage: (m: unknown) => void, onDisconnect: (reason: string | null) => void) => {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -59,6 +68,8 @@ function mainWorld(b: Bridge): void {
   const g = globalThis as unknown as { chrome?: Record<string, unknown> & { runtime?: { id?: string; getManifest?: () => { permissions?: unknown[] }; lastError?: unknown } }; browser?: unknown };
   const chrome = g.chrome;
   if (!chrome) return;
+  // Scripts de usuario permitidos (1.4.4): ver el freeze más abajo
+  const userScriptsAllowed = (chrome.runtime?.getManifest?.().permissions ?? []).includes('userScripts') && !!chrome.runtime?.id ? b.userScriptsAllowed(chrome.runtime.id) : false;
   try {
     if (g.browser !== chrome) Object.defineProperty(globalThis, 'browser', { value: chrome, configurable: true, writable: true, enumerable: false });
   } catch (e) {
@@ -226,6 +237,9 @@ function mainWorld(b: Bridge): void {
       Object.freeze = nativeFreeze;
       Object.defineProperty = nativeDefine;
       applyLate();
+      // Con chrome.userScripts no se congela: Chromium vuelve a revisar sus APIs después y, sobre un objeto congelado
+      // con una que para Chromium no existe, falla y cierra el proceso (medido en la 1.4.4)
+      if (userScriptsAllowed === true) return o as Readonly<T>;
     }
     return nativeFreeze(o);
   } as typeof Object.freeze;
@@ -398,6 +412,127 @@ function mainWorld(b: Bridge): void {
       },
     });
   }
+  // ---- 1.4.4: scripts de usuario
+  if (has('userScripts')) {
+    // Como en Chrome 138+: sin "Permitir scripts de usuario" la API no está (las extensiones lo detectan y explican cómo
+    // activarlo). Al cambiar el permiso, Callisto vuelve a cargar la extensión.
+    if (userScriptsAllowed === true) {
+      const us: Record<string, unknown> = { ExecutionWorld: { MAIN: 'MAIN', USER_SCRIPT: 'USER_SCRIPT' } };
+      for (const n of ['register', 'update', 'unregister', 'getScripts', 'configureWorld', 'getWorldConfigurations', 'resetWorldConfiguration', 'execute']) us[n] = call(`userScripts.${n}`);
+      def(chrome, 'userScripts', us);
+      // tabs.sendMessage: a los scripts de la extensión en esa pestaña (runtime.onMessage en su mundo, como en Chrome);
+      // si no hay ninguno, el de Chromium (content scripts)
+      late.push(() => {
+        const t = chrome.tabs as Record<string, unknown> | undefined;
+        const native = t?.sendMessage as ((...a: unknown[]) => unknown) | undefined;
+        if (!t || !native || (native as { __callisto?: boolean }).__callisto) return;
+        const send = (...args: unknown[]) => {
+          const cb = typeof args[args.length - 1] === 'function' ? (args.pop() as (r?: unknown) => void) : null;
+          const [tabId, message, options] = args;
+          const p = b.invoke(id, 'tabs.sendMessageToUserScripts', tabId, message, options).then((r) => {
+            const res = r as { delivered: boolean; response?: unknown };
+            return res.delivered ? res.response : (native.call(t, tabId, message, ...(options !== undefined ? [options] : [])) as Promise<unknown>);
+          });
+          if (!cb) return p;
+          p.then(cb, () => cb(undefined));
+          return undefined;
+        };
+        (send as { __callisto?: boolean }).__callisto = true;
+        def(t, 'sendMessage', send);
+      });
+    }
+    // Mensajes de los scripts: (mensaje, remitente, sendResponse), como runtime.onMessage
+    const messageListeners = new Set<(...a: unknown[]) => unknown>();
+    let messageAttached = false;
+    const onUserScriptMessage = {
+      addListener(fn: (...a: unknown[]) => unknown) {
+        messageListeners.add(fn);
+        if (messageAttached) return;
+        messageAttached = true;
+        b.addListener(id, 'runtime.onUserScriptMessage', (message: unknown, sender: unknown, requestId: unknown) => {
+          let responded = false;
+          const sendResponse = (response?: unknown) => {
+            if (responded) return;
+            responded = true;
+            void b.invoke(id, 'runtime.userScriptResponse', requestId, response);
+          };
+          let keepOpen = false;
+          messageListeners.forEach((f) => {
+            try {
+              const r = f(message, sender, sendResponse);
+              if (r === true) keepOpen = true;
+              else if (r && typeof (r as Promise<unknown>).then === 'function') {
+                keepOpen = true;
+                (r as Promise<unknown>).then(sendResponse, () => sendResponse(undefined));
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          });
+          if (!keepOpen && !responded) void b.invoke(id, 'runtime.userScriptResponse', requestId, undefined, true);
+        });
+      },
+      removeListener: (fn: (...a: unknown[]) => unknown) => void messageListeners.delete(fn),
+      hasListener: (fn: (...a: unknown[]) => unknown) => messageListeners.has(fn),
+      hasListeners: () => messageListeners.size > 0,
+    };
+    // Puertos de los scripts (connect): un Port por conexión
+    const portsById = new Map<string, { message(m: unknown): void; disconnect(): void }>();
+    let portEventsAttached = false;
+    const connectListeners = new Set<(port: unknown) => void>();
+    const onUserScriptConnect = {
+      addListener(fn: (port: unknown) => void) {
+        connectListeners.add(fn);
+        if (!portEventsAttached) {
+          portEventsAttached = true;
+          b.addListener(id, 'runtime.userScriptPortEvent', (portId: unknown, kind: unknown, data: unknown) => {
+            const p = portsById.get(String(portId));
+            if (!p) return;
+            if (kind === 'message') p.message(data);
+            else {
+              portsById.delete(String(portId));
+              p.disconnect();
+            }
+          });
+          b.addListener(id, 'runtime.onUserScriptConnect', (portId: unknown, name: unknown, sender: unknown) => {
+            const onMessage = new Set<(m: unknown, port: unknown) => void>();
+            const onDisconnect = new Set<(port: unknown) => void>();
+            let open = true;
+            const port = {
+              name: String(name ?? ''),
+              sender,
+              postMessage(m: unknown) {
+                if (!open) throw new Error('Attempting to use a disconnected port object');
+                void b.invoke(id, 'runtime.userScriptPortPost', portId, m);
+              },
+              disconnect() {
+                if (!open) return;
+                open = false;
+                portsById.delete(String(portId));
+                void b.invoke(id, 'runtime.userScriptPortClose', portId);
+              },
+              onMessage: { addListener: (f: (m: unknown, p: unknown) => void) => void onMessage.add(f), removeListener: (f: (m: unknown, p: unknown) => void) => void onMessage.delete(f), hasListener: (f: (m: unknown, p: unknown) => void) => onMessage.has(f) },
+              onDisconnect: { addListener: (f: (p: unknown) => void) => void onDisconnect.add(f), removeListener: (f: (p: unknown) => void) => void onDisconnect.delete(f), hasListener: (f: (p: unknown) => void) => onDisconnect.has(f) },
+            };
+            portsById.set(String(portId), {
+              message: (m) => onMessage.forEach((f) => f(m, port)),
+              disconnect: () => {
+                if (!open) return;
+                open = false;
+                onDisconnect.forEach((f) => f(port));
+              },
+            });
+            connectListeners.forEach((f) => f(port));
+          });
+        }
+      },
+      removeListener: (fn: (port: unknown) => void) => void connectListeners.delete(fn),
+      hasListener: (fn: (port: unknown) => void) => connectListeners.has(fn),
+      hasListeners: () => connectListeners.size > 0,
+    };
+    def(runtime, 'onUserScriptMessage', onUserScriptMessage);
+    def(runtime, 'onUserScriptConnect', onUserScriptConnect);
+  }
   // action.enable / disable / isEnabled: la librería las deja sin efecto; Callisto las implementa (botón desactivado)
   late.push(() => {
     const action = chrome.action as Record<string, unknown> | undefined;
@@ -421,7 +556,10 @@ function mainWorld(b: Bridge): void {
 
 if (inExtension) {
   try {
-    contextBridge.executeInMainWorld({ func: mainWorld, args: [bridge] });
+    // Sin aislamiento de contexto (los documentos offscreen que crea electron-chrome-extensions) no hay contextBridge:
+    // el preload ya corre en el mundo de la página de la extensión (como hace la librería en ese caso)
+    if (process.contextIsolated) contextBridge.executeInMainWorld({ func: mainWorld, args: [bridge] });
+    else mainWorld(bridge);
   } catch (e) {
     console.error('callisto: APIs de extensiones', e);
   }

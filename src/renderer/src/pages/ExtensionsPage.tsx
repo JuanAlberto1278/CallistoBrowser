@@ -10,6 +10,9 @@ function ExtensionCard({ ext, onChanged }: { ext: ExtensionInfo; onChanged: () =
   // El interruptor cambia en el acto; la lista se vuelve a pedir cuando el cambio terminó
   const [enabled, setEnabled] = useState(ext.enabled);
   useEffect(() => setEnabled(ext.enabled), [ext.enabled]);
+  // "Permitir scripts de usuario": también cambia en el acto (la extensión se recarga detrás)
+  const [usAllowed, setUsAllowed] = useState(ext.userScripts?.allowed ?? false);
+  useEffect(() => setUsAllowed(ext.userScripts?.allowed ?? false), [ext.userScripts?.allowed]);
   const required = ext.unsupported.filter((u) => !u.optional);
 
   return (
@@ -43,6 +46,31 @@ function ExtensionCard({ ext, onChanged }: { ext: ExtensionInfo; onChanged: () =
           <span />
         </label>
       </div>
+      {ext.userScripts && (
+        <label className="ext-userscripts" data-testid="extension-user-scripts">
+          <span>
+            <strong>Permitir scripts de usuario</strong>
+            <br />
+            <span className="muted small">
+              Deja que la extensión ejecute en las páginas el código que vos instales en ella (por ejemplo, los scripts de Tampermonkey). Activalo solo si
+              confiás en la extensión y en los scripts.
+            </span>
+          </span>
+          <span className="switch">
+            <input
+              type="checkbox"
+              data-testid="extension-user-scripts-toggle"
+              aria-label={`Permitir scripts de usuario en ${ext.name}`}
+              checked={usAllowed}
+              onChange={(e) => {
+                setUsAllowed(e.target.checked);
+                void api.setUserScriptsAllowed(ext.id, e.target.checked).then(onChanged);
+              }}
+            />
+            <span />
+          </span>
+        </label>
+      )}
       <div className="ext-actions">
         <button className="btn" data-testid="extension-details" aria-expanded={details} onClick={() => setDetails(!details)}>
           {details ? 'Ocultar detalles' : 'Detalles'}

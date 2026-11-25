@@ -66,6 +66,7 @@ const api: CallistoInternalApi = {
   extensions: {
     list: () => ipcRenderer.invoke(INTERNAL_IPC.extensionsList),
     setEnabled: (id, enabled) => ipcRenderer.invoke(INTERNAL_IPC.extensionsSetEnabled, String(id), enabled === true),
+    setUserScriptsAllowed: (id, allowed) => ipcRenderer.invoke(INTERNAL_IPC.extensionsSetUserScripts, String(id), allowed === true),
     remove: (id) => ipcRenderer.invoke(INTERNAL_IPC.extensionsRemove, String(id)),
     options: (id) => ipcRenderer.send(INTERNAL_IPC.extensionsOptions, String(id)),
     checkUpdates: () => ipcRenderer.invoke(INTERNAL_IPC.extensionsUpdate),

@@ -7,13 +7,16 @@
 // interfaz de Chrome que las implementa; en Windows la petición termina abriendo, sin que el usuario lo pida, el
 // diálogo del sistema de llave de seguridad USB. Callisto anuncia solo lo que soporta. El inicio de sesión con passkey
 // que el usuario elige explícitamente sigue funcionando con el diálogo de Windows.
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { PAGE_EDITED } from '../shared/page-signals';
+import { US_IPC, type UserScriptPlan } from '../shared/user-scripts-ipc';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, PW_IPC, isTextLike, isUsernameLike, pickPasswordIndex, pickUsernameIndex, type FieldInfo, type FieldRect } from '../shared/passwords';
 
 // Descargas autorizadas (docs/01-v0.1-resultados.md §1.2, "B-guard"): Callisto cancela toda descarga hasta que el
 // usuario la autoriza y después la vuelve a pedir. Muchos botones "Exportar" crean un blob:, lo descargan y lo revocan
 // en el acto; sin esto, al autorizar ya no existiría. Se retrasa la revocación 2 minutos (solo libera memoria más tarde).
+// Solo con aislamiento de contexto (las páginas web siempre lo tienen; un documento offscreen de una extensión, no)
+if (process.contextIsolated) {
 contextBridge.executeInMainWorld({
   func: (delayMs: number) => {
     const original = URL.revokeObjectURL.bind(URL);
@@ -57,6 +60,7 @@ contextBridge.executeInMainWorld({
     }
   },
 });
+}
 
 // ---------------------------------------------------------------- texto sin guardar (V1.0)
 // Una pestaña donde el usuario editó algo no se duerme sola (perdería lo escrito). Se avisa una vez por documento, en
@@ -287,4 +291,213 @@ try {
   setupPasswords();
 } catch (e) {
   console.error('callisto: passwords setup failed', e);
+}
+
+// ---------------------------------------------------------------- scripts de usuario (1.4.4)
+//
+// Los de las extensiones con "Permitir scripts de usuario" (Tampermonkey, Violentmonkey). Este preload corre en todos
+// los frames antes que la página, así que "document_start" es de verdad antes de sus scripts. El proceso principal decide
+// qué scripts tocan con la dirección real del frame (src/main/extensions/user-scripts.ts).
+
+const cleanError = (e: unknown) => new Error(String(e instanceof Error ? e.message : e).replace(/^Error invoking remote method '[^']*': (Error: )?/, ''));
+const preparedWorlds = new Set<number>();
+type PortHandlers = { message(m: unknown): void; disconnect(reason: string | null): void };
+const scriptPorts = new Map<string, PortHandlers>();
+
+ipcRenderer.on(US_IPC.port, (_e, portId: string, kind: 'message' | 'disconnect', data: unknown) => {
+  const port = scriptPorts.get(portId);
+  if (!port) return;
+  if (kind === 'message') port.message(data);
+  else {
+    scriptPorts.delete(portId);
+    port.disconnect(typeof data === 'string' ? data : null);
+  }
+});
+
+/** Oyentes de runtime.onMessage de los scripts de cada extensión (mensajes de su tabs.sendMessage). */
+type ScriptListener = (m: unknown, sender: unknown, reply: (r?: unknown) => void) => unknown;
+const scriptMessageListeners = new Map<string, Set<ScriptListener>>();
+
+ipcRenderer.on(US_IPC.tabMessage, (_e, requestId: number, extensionId: string, message: unknown, sender: unknown) => {
+  const listeners = scriptMessageListeners.get(extensionId);
+  let responded = false;
+  const reply = (response?: unknown) => {
+    if (responded) return;
+    responded = true;
+    ipcRenderer.send(US_IPC.tabResponse, requestId, response, false);
+  };
+  let keepOpen = false;
+  for (const f of listeners ?? []) {
+    try {
+      const r = f(message, sender, reply);
+      if (r === true) keepOpen = true;
+      else if (r && typeof (r as Promise<unknown>).then === 'function') {
+        keepOpen = true;
+        (r as Promise<unknown>).then(reply, () => reply(undefined));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  if (!keepOpen && !responded) ipcRenderer.send(US_IPC.tabResponse, requestId, undefined, true);
+});
+
+/** runtime.sendMessage / connect / onMessage dentro del mundo USER_SCRIPT (si la extensión habilitó la mensajería). */
+function messagingApi(extensionId: string) {
+  const listeners = scriptMessageListeners.get(extensionId) ?? new Set<ScriptListener>();
+  scriptMessageListeners.set(extensionId, listeners);
+  return {
+    runtime: {
+      id: extensionId,
+      getURL: (path: unknown) => `chrome-extension://${extensionId}/${String(path ?? '').replace(/^\/+/, '')}`,
+      getPlatformInfo: (cb?: unknown) => {
+        const info = { os: 'win', arch: 'x86-64', nacl_arch: 'x86-64' };
+        if (typeof cb === 'function') {
+          (cb as (i: unknown) => void)(info);
+          return undefined;
+        }
+        return Promise.resolve(info);
+      },
+      onMessage: {
+        addListener: (fn: ScriptListener) => void listeners.add(fn),
+        removeListener: (fn: ScriptListener) => void listeners.delete(fn),
+        hasListener: (fn: ScriptListener) => listeners.has(fn),
+      },
+      sendMessage: (...args: unknown[]) => {
+        const cb = typeof args[args.length - 1] === 'function' ? (args.pop() as (r?: unknown) => void) : null;
+        const message = args.length >= 2 && typeof args[0] === 'string' && args[0] === extensionId ? args[1] : args[0];
+        const p = ipcRenderer.invoke(US_IPC.message, extensionId, message).catch((e: unknown) => Promise.reject(cleanError(e)));
+        if (!cb) return p;
+        p.then(cb, () => cb(undefined));
+        return undefined;
+      },
+      connect: (...args: unknown[]) => {
+        const info = (args.find((a) => a && typeof a === 'object') ?? {}) as { name?: unknown };
+        const portId = `us-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        const onMessage = new Set<(m: unknown) => void>();
+        const onDisconnect = new Set<() => void>();
+        let open = true;
+        const port = {
+          name: typeof info.name === 'string' ? info.name : '',
+          postMessage: (m: unknown) => {
+            if (!open) throw new Error('Attempting to use a disconnected port object');
+            ipcRenderer.send(US_IPC.portPost, portId, m);
+          },
+          disconnect: () => {
+            if (!open) return;
+            open = false;
+            scriptPorts.delete(portId);
+            ipcRenderer.send(US_IPC.portClose, portId);
+          },
+          onMessage: { addListener: (fn: (m: unknown) => void) => void onMessage.add(fn), removeListener: (fn: (m: unknown) => void) => void onMessage.delete(fn), hasListener: (fn: (m: unknown) => void) => onMessage.has(fn) },
+          onDisconnect: { addListener: (fn: () => void) => void onDisconnect.add(fn), removeListener: (fn: () => void) => void onDisconnect.delete(fn), hasListener: (fn: () => void) => onDisconnect.has(fn) },
+        };
+        scriptPorts.set(portId, {
+          message: (m) => onMessage.forEach((f) => f(m)),
+          disconnect: () => {
+            if (!open) return;
+            open = false;
+            onDisconnect.forEach((f) => f());
+          },
+        });
+        ipcRenderer.send(US_IPC.connect, extensionId, portId, port.name);
+        return port;
+      },
+    },
+  };
+}
+
+/** Ejecuta un script en su mundo (devuelve el valor de la última expresión). */
+/**
+ * La mensajería se expone con un nombre propio y un script la pone en chrome.runtime dentro del mundo: exponer `chrome`
+ * directamente cierra el proceso (ese mundo ya tiene un `chrome` de Chromium; medido en la 1.4.4).
+ */
+const MESSAGING_KEY = '__callistoUserScriptMessaging';
+const MESSAGING_BOOTSTRAP = `(() => {
+  const api = globalThis.${MESSAGING_KEY};
+  if (!api) return;
+  let c = globalThis.chrome;
+  if (!c || typeof c !== 'object') {
+    c = {};
+    try { Object.defineProperty(globalThis, 'chrome', { value: c, configurable: true, writable: true }); } catch (e) {}
+  }
+  let rt = c.runtime;
+  if (!rt || typeof rt !== 'object') {
+    rt = {};
+    try { Object.defineProperty(c, 'runtime', { value: rt, configurable: true, writable: true, enumerable: true }); } catch (e) {}
+  }
+  for (const k of ['id', 'getURL', 'getPlatformInfo', 'sendMessage', 'connect', 'onMessage']) {
+    try { Object.defineProperty(rt, k, { value: api.runtime[k], configurable: true, writable: true, enumerable: true }); } catch (e) {}
+  }
+})();`;
+
+/** Ejecuta un script en su mundo (devuelve el valor de la última expresión). */
+function injectUserScript(plan: UserScriptPlan): Promise<unknown> {
+  if (plan.world === 0) return webFrame.executeJavaScript(plan.code);
+  if (!preparedWorlds.has(plan.world)) {
+    preparedWorlds.add(plan.world);
+    // Con CSP propia, Electron pide el origen del mundo: el de la página (como el mundo USER_SCRIPT de Chrome)
+    webFrame.setIsolatedWorldInfo(plan.world, { name: plan.name, ...(plan.csp ? { csp: plan.csp, securityOrigin: location.origin } : {}) });
+    if (plan.messaging) {
+      contextBridge.exposeInIsolatedWorld(plan.world, MESSAGING_KEY, messagingApi(plan.extensionId));
+      void webFrame.executeJavaScriptInIsolatedWorld(plan.world, [{ code: MESSAGING_BOOTSTRAP }]);
+    }
+  }
+  return webFrame.executeJavaScriptInIsolatedWorld(plan.world, [{ code: plan.code }]);
+}
+
+function runUserScripts(): void {
+  if (!process.contextIsolated || !/^(https?|file|ftp):$/.test(location.protocol)) return;
+  let plans: unknown;
+  try {
+    plans = ipcRenderer.sendSync(US_IPC.plan);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(plans) || !plans.length) return;
+  const run = (p: UserScriptPlan) => void injectUserScript(p).catch((e: unknown) => console.error('callisto: script de usuario', e));
+  const at = (when: UserScriptPlan['runAt']) => (plans as UserScriptPlan[]).filter((p) => p.runAt === when);
+  at('document_start').forEach(run);
+  const end = at('document_end');
+  const idle = at('document_idle');
+  if (!end.length && !idle.length) return;
+  document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+      end.forEach(run);
+      if (!idle.length) return;
+      // "Cuando el navegador pueda": al cargar la página o, como mucho, poco después de DOMContentLoaded
+      let done = false;
+      const runIdle = () => {
+        if (done) return;
+        done = true;
+        idle.forEach(run);
+      };
+      window.addEventListener('load', runIdle, { once: true });
+      setTimeout(runIdle, 200);
+    },
+    { once: true },
+  );
+}
+
+// chrome.userScripts.execute: scripts para ejecutar ya en este frame
+ipcRenderer.on(US_IPC.execute, (_e, requestId: number, frameId: number, plan: UserScriptPlan) => {
+  injectUserScript(plan).then(
+    (result) => {
+      let value: unknown = result;
+      try {
+        value = JSON.parse(JSON.stringify(result ?? null));
+      } catch {
+        value = null;
+      }
+      ipcRenderer.send(US_IPC.executed, requestId, { frameId, result: value });
+    },
+    (e: unknown) => ipcRenderer.send(US_IPC.executed, requestId, { frameId, error: String(e instanceof Error ? e.message : e) }),
+  );
+});
+
+try {
+  runUserScripts();
+} catch (e) {
+  console.error('callisto: scripts de usuario', e);
 }

@@ -177,6 +177,7 @@ test('una pestaña de fondo que suena no se marca por usar CPU', async () => {
   await webPages(c.app, (u) => u.endsWith('/busy'))[0]!.evaluate(() => {
     const ctx = new AudioContext();
     const o = ctx.createOscillator();
+    o.frequency.value = 20000; // fuera del oído
     const g = ctx.createGain();
     g.gain.value = 0.004;
     o.connect(g).connect(ctx.destination);

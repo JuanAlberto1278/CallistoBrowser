@@ -208,9 +208,9 @@ describe('APIs que faltan', () => {
   it('las de ChromeOS no se avisan ni cuentan como faltantes; las completadas tampoco', () => {
     for (const p of NOT_ON_WINDOWS_APIS) expect(UNSUPPORTED_APIS[p], p).toBeUndefined();
     for (const p of CALLISTO_APIS) expect(UNSUPPORTED_APIS[p], p).toBeUndefined();
-    expect(unsupportedPermissions({ permissions: ['history', 'wallpaper', 'printing', 'tts'], optional_permissions: ['userScripts'] })).toEqual([
+    expect(unsupportedPermissions({ permissions: ['history', 'wallpaper', 'printing', 'tts'], optional_permissions: ['debugger'] })).toEqual([
       { permission: 'tts', what: 'texto a voz', optional: false },
-      { permission: 'userScripts', what: 'scripts de usuario', optional: true },
+      { permission: 'debugger', what: 'depurar páginas', optional: true },
     ]);
   });
 });

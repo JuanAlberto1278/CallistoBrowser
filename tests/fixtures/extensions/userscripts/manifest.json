@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: scripts de usuario de prueba",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto (1.4.4): chrome.userScripts como Tampermonkey.",
+  "permissions": ["userScripts", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "sw.js" }
+}

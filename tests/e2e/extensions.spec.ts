@@ -225,7 +225,9 @@ test('la compatibilidad medida coincide con la tabla de Callisto (extensión son
   expect(exists.bookmarks).toBe(true);
   expect(exists.tabGroups).toBe(true);
   // Todo lo que no existe figura como no disponible (o es de ChromeOS, que Chrome en Windows tampoco tiene), y viceversa
-  const missing = Object.entries(exists).filter(([k, v]) => !v && k !== 'action' && k !== 'browser===chrome').map(([k]) => k).sort();
+  // (userScripts existe solo con "Permitir scripts de usuario" activado para la extensión: ver v144.spec.ts)
+  expect(exists.userScripts).toBe(false);
+  const missing = Object.entries(exists).filter(([k, v]) => !v && k !== 'action' && k !== 'browser===chrome' && k !== 'userScripts').map(([k]) => k).sort();
   expect(missing).toEqual([...Object.keys(UNSUPPORTED_APIS), ...NOT_ON_WINDOWS_APIS].sort());
   // 1.4.3: un programa que no está instalado responde como en Chrome (antes la llamada se quedaba sin respuesta)
   expect(calls.nativeMessaging).toBe('Specified native messaging host not found.');

@@ -42,7 +42,6 @@ export const UNSUPPORTED_APIS: Record<string, string> = {
   tabCapture: 'capturar pestañas',
   tts: 'texto a voz',
   ttsEngine: 'motor de texto a voz',
-  userScripts: 'scripts de usuario',
   webAuthenticationProxy: 'proxy de autenticación web',
 };
 
@@ -69,7 +68,7 @@ export const NOT_ON_WINDOWS_APIS = [
 ] as const;
 
 /** APIs que Callisto agrega sobre sus propios sistemas (no las trae Electron ni la librería). */
-export const CALLISTO_APIS = ['bookmarks', 'tabGroups', 'history', 'sessions', 'search', 'browsingData', 'identity', 'identity.email', 'pageCapture', 'proxy', 'system.display', 'downloads', 'topSites', 'omnibox', 'nativeMessaging', 'sidePanel', 'declarativeContent'] as const;
+export const CALLISTO_APIS = ['bookmarks', 'tabGroups', 'history', 'sessions', 'search', 'browsingData', 'identity', 'identity.email', 'pageCapture', 'proxy', 'system.display', 'downloads', 'topSites', 'omnibox', 'nativeMessaging', 'sidePanel', 'declarativeContent', 'userScripts'] as const;
 
 /** Permisos pedidos por la extensión que no están disponibles (los opcionales también cuentan). */
 export function unsupportedPermissions(manifest: ExtensionManifest): Array<{ permission: string; what: string; optional: boolean }> {
@@ -195,7 +194,8 @@ export interface ExtensionInfo {
   icon: string | null;
   warnings: string[];
   unsupported: Array<{ permission: string; what: string; optional: boolean }>;
-  /** Probada en la V0.1, si corresponde. */
+  /** Scripts de usuario (1.4.4): null si la extensión no los pide; si los pide, si el usuario los permitió. */
+  userScripts: { allowed: boolean } | null;
   hasOptions: boolean;
   storeUrl: string;
   installed: number;

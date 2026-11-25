@@ -7,6 +7,7 @@ import { installChromeWebStore } from 'electron-chrome-web-store';
 import { compareVersions, downloadCrx, ExtensionRegistry, InstallError, parseUpdateCheck, unpackCrx, updateCheckUrl, type ExtensionRecord, type Fetcher } from './installer';
 import { CrxError } from './crx';
 import type { BrowserApis } from './browser-apis';
+import type { UserScripts } from './user-scripts';
 import { ZipError } from './unzip';
 import type { Profile } from '../profile';
 import { invisibleForTests } from '../test-mode';
@@ -88,6 +89,8 @@ export class ExtensionManager extends EventEmitter<{
   readonly chrome: ElectronChromeExtensions;
   /** APIs que Callisto agrega en la 1.4.2 (atajos, palabra clave en la barra, menú del botón): ver browser-apis.ts. */
   browser: BrowserApis | null = null;
+  /** Scripts de usuario (1.4.4): ver user-scripts.ts. */
+  userScripts: UserScripts | null = null;
   readonly registry: ExtensionRegistry;
   private readonly errors = new Map<string, string>();
   private readonly installing = new Set<string>();
@@ -297,6 +300,16 @@ export class ExtensionManager extends EventEmitter<{
     this.emit('changed');
   }
 
+  /** Vuelve a cargar una extensión (p. ej. al permitir o no sus scripts de usuario, como en Chrome). */
+  async reload(id: string): Promise<void> {
+    const r = this.registry.get(id);
+    const ses = this.profile.session;
+    if (!r || !r.enabled) return;
+    if (ses.extensions.getExtension(id)) ses.extensions.removeExtension(id);
+    await this.loadOne(r);
+    this.emit('changed');
+  }
+
   remove(id: string): void {
     const ses = this.profile.session;
     if (ses.extensions.getExtension(id)) ses.extensions.removeExtension(id);
@@ -413,6 +426,7 @@ export class ExtensionManager extends EventEmitter<{
         icon: this.iconOf(path, manifest),
         warnings: permissionWarnings(manifest),
         unsupported: unsupportedPermissions(manifest),
+        userScripts: (manifest.permissions ?? []).includes('userScripts') || (manifest.optional_permissions ?? []).includes('userScripts') ? { allowed: this.userScripts?.isAllowed(r.id) ?? false } : null,
         hasOptions: !!(manifest.options_ui?.page || manifest.options_page),
         storeUrl: `${WEBSTORE_ORIGIN}/detail/${r.id}`,
         installed: r.installed,

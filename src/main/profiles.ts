@@ -5,6 +5,7 @@ import { ExtensionManager, type ExtensionHost } from './extensions/manager';
 import { registerCallistoApis } from './extensions/callisto-apis';
 import { registerBrowserApis } from './extensions/browser-apis';
 import { registerNativeMessaging } from './extensions/native-messaging';
+import { UserScripts } from './extensions/user-scripts';
 import { matchShortcut } from './shortcuts';
 import { Profile, type InternalPages } from './profile';
 import { ProfileRegistry } from './profile-registry';
@@ -115,6 +116,8 @@ export class ProfileManager implements ProfilesApi {
     });
     // Programas instalados (1.4.3): se pregunta la primera vez
     registerNativeMessaging(extensions, { parentWindow: () => this.windowFor(profile, null)?.win ?? null });
+    // Scripts de usuario (1.4.4): solo con "Permitir scripts de usuario" activado para la extensión
+    extensions.userScripts = new UserScripts(extensions);
     const rt: Runtime = { ctx: this.makeContext(profile, closedTabs, saver), saver, store, noticeShown: false };
     this.runtimes.set(id, rt);
     return rt;

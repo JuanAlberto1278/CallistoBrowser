@@ -123,6 +123,6 @@ describe('APIs que faltan (1.4.3)', () => {
       expect(UNSUPPORTED_APIS[p], p).toBeUndefined();
       expect(CALLISTO_APIS).toContain(p);
     }
-    expect(unsupportedPermissions({ permissions: ['sidePanel', 'nativeMessaging', 'declarativeContent', 'userScripts'] })).toEqual([{ permission: 'userScripts', what: 'scripts de usuario', optional: false }]);
+    expect(unsupportedPermissions({ permissions: ['sidePanel', 'nativeMessaging', 'declarativeContent', 'debugger'] })).toEqual([{ permission: 'debugger', what: 'depurar páginas', optional: false }]);
   });
 });

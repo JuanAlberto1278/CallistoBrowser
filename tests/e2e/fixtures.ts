@@ -209,6 +209,11 @@ export async function startServer(): Promise<TestServer> {
       case '/busy':
         // Usa mucha CPU sin parar (un worker en un bucle: los workers no se frenan en segundo plano)
         return html(page('Ocupada', `<script>new Worker(URL.createObjectURL(new Blob(['for (;;) {}'], { type: 'text/javascript' })));</script>`));
+      case '/us-page':
+        // ¿Qué vio la página al empezar? (un script de usuario "document_start" en el mundo de la página corre antes)
+        return html(page('Scripts de usuario', '', `<script>window.__seenByPage = String(window.__usMain)</script>`));
+      case '/us-frames':
+        return html(page('Con iframe', '<iframe id="f" src="/page3"></iframe>'));
       case '/redirect-to': {
         // Redirige a ?to= (inicio de sesión de una extensión: el proveedor vuelve a https://<id>.chromiumapp.org/)
         const to = new URL(req.url ?? '/', 'http://x').searchParams.get('to') ?? '/';
@@ -216,8 +221,9 @@ export async function startServer(): Promise<TestServer> {
         return res.end();
       }
       case '/sound':
-        // Un tono casi inaudible (para el ícono de audio de la pestaña); la política de Electron permite reproducir sin gesto
-        return html(page('Con sonido', `<script>const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0.004; o.connect(g).connect(ctx.destination); o.start();</script>`));
+        // Un tono de 20 kHz (fuera del oído: no se escucha mientras corren las pruebas) para el ícono de audio de la
+        // pestaña; Chromium decide que una pestaña suena por la potencia, no por la frecuencia
+        return html(page('Con sonido', `<script>const ctx = new AudioContext(); const o = ctx.createOscillator(); o.frequency.value = 20000; const g = ctx.createGain(); g.gain.value = 0.004; o.connect(g).connect(ctx.destination); o.start();</script>`));
       case '/self-close':
         return html(page('Se cierra sola', '<button id="close" onclick="window.close()">Cerrar</button>'));
       case '/find':

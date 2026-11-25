@@ -597,6 +597,10 @@ function registerExtensionsPageIpc(): void {
     const m = managerOf(e) ?? denied();
     if (m.ext && isExtensionId(id)) await m.ext.setEnabled(id, enabled === true);
   });
+  ipcMain.handle(INTERNAL_IPC.extensionsSetUserScripts, async (e, id: unknown, allowed: unknown) => {
+    const m = managerOf(e) ?? denied();
+    if (m.ext?.userScripts && isExtensionId(id) && m.ext.registry.get(id)) await m.ext.userScripts.setAllowed(id, allowed === true);
+  });
   ipcMain.handle(INTERNAL_IPC.extensionsRemove, (e, id: unknown) => {
     const m = managerOf(e) ?? denied();
     if (m.ext && isExtensionId(id)) m.ext.remove(id);

@@ -8,6 +8,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.4',
+    date: '2026-11-25',
+    items: [
+      'Tampermonkey y Violentmonkey funcionan: los scripts de usuario que instalás corren en las páginas.',
+      'Por seguridad, cada extensión que usa scripts de usuario necesita que actives «Permitir scripts de usuario» en su tarjeta de Configuración → Extensiones (como en Chrome).',
+      'Las extensiones con documentos ocultos (offscreen) reciben todas las funciones de Callisto.',
+    ],
+  },
+  {
     version: '1.4.3',
     date: '2026-11-25',
     items: [

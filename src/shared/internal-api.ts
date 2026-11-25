@@ -128,6 +128,7 @@ export const INTERNAL_IPC = {
   passwordsSetOffer: 'callisto-internal:passwords-set-offer',
   extensionsList: 'callisto-internal:extensions-list',
   extensionsSetEnabled: 'callisto-internal:extensions-set-enabled',
+  extensionsSetUserScripts: 'callisto-internal:extensions-set-user-scripts',
   extensionsRemove: 'callisto-internal:extensions-remove',
   extensionsOptions: 'callisto-internal:extensions-options',
   extensionsUpdate: 'callisto-internal:extensions-update',
@@ -254,6 +255,8 @@ export interface CallistoInternalApi {
   extensions: {
     list(): Promise<ExtensionsSnapshot>;
     setEnabled(id: string, enabled: boolean): Promise<void>;
+    /** "Permitir scripts de usuario" (Tampermonkey, Violentmonkey): la extensión se vuelve a cargar. */
+    setUserScriptsAllowed(id: string, allowed: boolean): Promise<void>;
     remove(id: string): Promise<void>;
     /** Abre la página de opciones de la extensión en una pestaña nueva. */
     options(id: string): void;
