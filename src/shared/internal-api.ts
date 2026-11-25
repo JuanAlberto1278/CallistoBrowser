@@ -47,6 +47,32 @@ export interface MemoryUsage {
   processes: number;
   awakeTabs: number;
   asleepTabs: number;
+  /** Memoria que liberaron hoy las pestañas dormidas (al menos; ver memory-savings.ts), en MB. */
+  savedTodayMb: number;
+}
+
+/** Qué es un proceso en el Administrador de tareas. */
+export type TaskKind = 'browser' | 'gpu' | 'utility' | 'ui' | 'tabs' | 'internal' | 'extension' | 'devtools' | 'other';
+
+/** Un proceso de Callisto en el Administrador de tareas. */
+export interface TaskRow {
+  pid: number;
+  kind: TaskKind;
+  title: string;
+  /** Pestañas o extensiones que comparten el proceso, si son varias (con el aislamiento de sitios, las del mismo sitio). */
+  members: string[];
+  memoryMb: number;
+  /** CPU en % del total del equipo (como el Administrador de tareas de Windows), desde la medición anterior. */
+  cpu: number;
+  /** Se puede finalizar (pestañas, páginas internas y extensiones; nunca el proceso principal ni la interfaz). */
+  canEnd: boolean;
+}
+
+export interface TaskSnapshot {
+  rows: TaskRow[];
+  totalMb: number;
+  asleepTabs: number;
+  savedTodayMb: number;
 }
 
 /** Qué borrar en "Borrar datos de navegación". El período solo aplica al historial (Chromium borra el resto entero). */
@@ -108,6 +134,9 @@ export const INTERNAL_IPC = {
   extensionsOpenStore: 'callisto-internal:extensions-open-store',
   /** Colores del tema (cualquier página interna; las aplica su preload). */
   themeGet: 'callisto-internal:theme-get',
+  tasksList: 'callisto-internal:tasks-list',
+  tasksEnd: 'callisto-internal:tasks-end',
+  settingsOpenTaskManager: 'callisto-internal:settings-open-task-manager',
   themeChanged: 'callisto-internal:theme-changed',
 } as const;
 
@@ -173,6 +202,14 @@ export interface CallistoInternalApi {
     installUpdate(): void;
     /** Memoria que usa Callisto ahora (todos sus procesos) y pestañas despiertas/dormidas. */
     memoryUsage(): Promise<MemoryUsage>;
+    /** Abre el Administrador de tareas (Shift+Esc). */
+    openTaskManager(): void;
+  };
+  /** Administrador de tareas (callisto://tasks, en su propia ventana). */
+  tasks: {
+    list(): Promise<TaskSnapshot>;
+    /** Finaliza un proceso (sus pestañas muestran "La página dejó de funcionar"). */
+    end(pid: number): Promise<void>;
   };
   downloads: {
     list(query?: string): Promise<DownloadEntry[]>;

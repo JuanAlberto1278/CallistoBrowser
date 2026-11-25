@@ -93,6 +93,14 @@ export function SettingsPage() {
             <option value={0}>Nunca</option>
           </select>
         </div>
+        <label className="row">
+          <span>
+            Si a Windows le falta memoria, dormir antes las pestañas
+            <br />
+            <span className="muted small">Las que no usás desde hace 1 minuto, aunque el tiempo elegido arriba sea mayor o «Nunca».</span>
+          </span>
+          <input type="checkbox" data-testid="settings-low-memory" checked={settings.sleepWhenLowMemory} onChange={(e) => update({ sleepWhenLowMemory: e.target.checked })} />
+        </label>
         <p className="muted">
           Una pestaña dormida no usa memoria: queda en la barra (atenuada) y se vuelve a cargar al tocarla, en el mismo lugar de la página. Nunca se
           duermen la pestaña que estás viendo, las que reproducen sonido, cargan o tienen texto que escribiste. También podés dormir una pestaña desde su

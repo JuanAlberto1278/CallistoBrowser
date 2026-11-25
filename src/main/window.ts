@@ -2,6 +2,8 @@ import { basename, dirname, join } from 'node:path';
 import { app, BaseWindow, clipboard, dialog, Menu, MenuItem, nativeTheme, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
 import { Tab, type TabKind } from './tab';
 import { showWindow, SLEEP_MINUTE_MS, TEST_CLOSE_ANSWER } from './test-mode';
+import { lowSystemMemory, soleProcessMemoryKb } from './resource-monitor';
+import { memorySavings } from './memory-savings';
 import { AutofillPopup } from './autofill-popup';
 import { stopOrphanServiceWorkers } from './service-worker-reaper';
 import { updater } from './updater';
@@ -135,6 +137,16 @@ export class BrowserWindowController {
   /** Callisto está saliendo (o Windows se apaga): las ventanas se cierran sin preguntar. */
   static quitting = false;
 
+  /**
+   * Lo que la ventana usa de módulos que la importan a ella (el Administrador de tareas), sin dependencias circulares.
+   * Lo completa index.ts.
+   */
+  static hooks: { openTaskManager: () => void; auxiliaryContents: () => WebContents[]; lastClosed: () => void } = {
+    openTaskManager: () => {},
+    auxiliaryContents: () => [],
+    lastClosed: () => {},
+  };
+
   readonly id = nextWindowId++;
   readonly win: BaseWindow;
   readonly ui: WebContentsView;
@@ -261,6 +273,8 @@ export class BrowserWindowController {
       if (!this.uiContents.isDestroyed()) this.uiContents.close();
       this.ctx.session.markDirty();
       this.ctx.profiles.windowClosed(this);
+      // La última ventana: el Administrador de tareas se cierra con ella (si no, Callisto no saldría)
+      if (BrowserWindowController.all.size === 0) BrowserWindowController.hooks.lastClosed();
     });
 
     BrowserWindowController.all.add(this);
@@ -435,6 +449,7 @@ export class BrowserWindowController {
 
   activate(tab: Tab, opts: { focus?: FocusMode } = {}): void {
     if (!this.tabs.includes(tab)) return;
+    tab.highCpu = false;
     // Activar una pestaña de un grupo contraído lo expande
     const g = tab.groupId !== null ? this.groups.get(tab.groupId) : undefined;
     if (g?.collapsed) g.collapsed = false;
@@ -650,13 +665,24 @@ export class BrowserWindowController {
     if (tab === this.activeTab || !this.tabs.includes(tab) || !tab.canSleep) return false;
     const index = this.tabs.indexOf(tab);
     const saved = { ...savedFromSnapshot(tab.snapshot()), faviconKey: tab.state.faviconKey };
+    // Memoria que se libera: la del proceso de la pestaña, si era la única que vivía en él
+    const freedKb = soleProcessMemoryKb(tab.webContents);
     const sleeping = new Tab(this.ctx.profile, { pending: saved, kind: tab.kind, asleep: true, openerId: tab.openerId });
     sleeping.groupId = tab.groupId;
     sleeping.pinned = tab.pinned;
     sleeping.lastActive = tab.lastActive;
     this.insertTab(sleeping, index, false, 'none', false);
     this.removeTab(tab, { record: false, destroy: true });
+    if (freedKb) memorySavings().add(freedKb);
     return true;
+  }
+
+  /** El ícono de "usa mucha CPU": la duerme; si no se puede (texto sin enviar, sonando…), la muestra y explica por qué. */
+  sleepFromIndicator(tab: Tab): void {
+    if (!this.tabs.includes(tab) || this.sleepTab(tab)) return;
+    tab.highCpu = false;
+    this.activate(tab);
+    tab.showNotice('info', 'Esta pestaña no se puede dormir ahora (por ejemplo, tiene texto escrito sin enviar o está sonando).');
   }
 
   /** Sitio de la pestaña para "No dormir nunca este sitio": su dominio y si ya está en la lista (null: no es un sitio web). */
@@ -683,7 +709,10 @@ export class BrowserWindowController {
   /** Duerme las pestañas que no se usan hace más de lo configurado, y libera los service workers sin pestañas. */
   private sleepIdleTabs(): void {
     if (this.closing) return;
-    const minutes = this.ctx.profile.settings.sleepTabsAfter;
+    const settings = this.ctx.profile.settings;
+    // Si a Windows le falta memoria: las que no se usan desde hace 1 minuto (aunque el tiempo elegido sea mayor o "Nunca")
+    const pressure = settings.sleepWhenLowMemory && lowSystemMemory();
+    const minutes = pressure ? Math.min(settings.sleepTabsAfter || 1, 1) : settings.sleepTabsAfter;
     if (minutes) {
       const limit = Date.now() - minutes * SLEEP_MINUTE_MS;
       const keep = this.ctx.profile.settings.neverSleepSites;
@@ -1250,6 +1279,9 @@ export class BrowserWindowController {
       const vars = themeVars(w.ctx.profile.theme);
       for (const t of w.tabs) if (t.kind === 'internal' && !t.webContents.isDestroyed()) t.webContents.send(INTERNAL_IPC.themeChanged, vars);
     }
+    // El Administrador de tareas: con el tema de la ventana actual
+    const current = this.current();
+    if (current) for (const wc of this.hooks.auxiliaryContents()) if (!wc.isDestroyed()) wc.send(INTERNAL_IPC.themeChanged, themeVars(current.ctx.profile.theme));
   }
 
   onUiReady(): void {
@@ -1325,6 +1357,7 @@ export class BrowserWindowController {
     const index = this.tabs.indexOf(tab);
     switch (action) {
       case 'focus-address-bar': return this.focusAddressBar();
+      case 'task-manager': return BrowserWindowController.hooks.openTaskManager();
       case 'tab-search': return this.focusTabSearch();
       case 'back': return tab.goBack();
       case 'forward': return tab.goForward();
@@ -1466,6 +1499,7 @@ export class BrowserWindowController {
           downloads: () => this.openInternalPage('downloads'),
           passwords: () => this.openInternalPage('passwords'),
           extensions: () => this.openInternalPage('extensions'),
+          taskManager: () => BrowserWindowController.hooks.openTaskManager(),
           zoom: (d) => this.activeTab.zoom(d),
           find: () => this.openFind(),
           settings: () => this.openInternalPage('settings'),

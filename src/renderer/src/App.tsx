@@ -206,6 +206,11 @@ export function App() {
       {notice && (
         <div className={`notice ${notice.kind}`} role="status" data-testid="notice" style={{ height: NOTICE_HEIGHT }}>
           <span className="notice-text">{notice.text}</span>
+          {notice.actions?.map((a) => (
+            <button key={a.id} className="notice-action" data-testid={`notice-${a.id}`} onClick={() => api.noticeAction(notice.id, a.id)}>
+              {a.label}
+            </button>
+          ))}
           <button className="icon-button small" data-testid="notice-close" aria-label="Cerrar aviso" title="Cerrar" onClick={() => api.dismissNotice(notice.id)}>
             <CloseIcon />
           </button>

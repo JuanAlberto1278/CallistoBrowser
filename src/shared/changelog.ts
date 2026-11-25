@@ -8,6 +8,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.4.0',
+    date: '2026-11-24',
+    items: [
+      'Administrador de tareas (Shift+Esc o menú ⋯): memoria y CPU de cada proceso de Callisto, con sus pestañas y extensiones, y «Finalizar proceso».',
+      'Si una página no responde, Callisto lo avisa: podés esperar o detenerla.',
+      'Una pestaña en segundo plano que usa mucha CPU muestra un ícono; un clic la duerme.',
+      'Si a Windows le falta memoria, las pestañas que no usás se duermen antes (se puede desactivar en Configuración → Rendimiento).',
+      'Configuración → Rendimiento muestra cuánta memoria liberaron hoy las pestañas dormidas.',
+    ],
+  },
+  {
     version: '1.3.0',
     date: '2026-11-24',
     items: [

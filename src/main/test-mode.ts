@@ -26,6 +26,9 @@ export const TEST_CLOSE_ANSWER: 'close' | 'cancel' | null = app.isPackaged
       ? 'close'
       : null;
 
+/** Las pruebas simulan que a Windows le falta memoria (solo sin empaquetar): CALLISTO_TEST_LOW_MEMORY=1. */
+export const TEST_LOW_MEMORY = !app.isPackaged && process.env.CALLISTO_TEST_LOW_MEMORY === '1';
+
 /** Debe llamarse antes de `app.whenReady()`. */
 export function configureTestMode(): void {
   if (!invisibleForTests) return;

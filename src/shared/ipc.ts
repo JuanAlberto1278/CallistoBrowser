@@ -10,10 +10,14 @@ import type { PasswordOffer } from './passwords';
 import type { ExtensionInstallPrompt } from './extensions';
 import type { ThemeVars } from './themes';
 
+export type NoticeAction = 'wait' | 'stop';
+
 export interface Notice {
   id: number;
   kind: 'info' | 'warning';
   text: string;
+  /** Botones del aviso ("La página no responde": Esperar / Detener la página). */
+  actions?: Array<{ id: NoticeAction; label: string }>;
 }
 
 /** Barra de búsqueda en la página (null en TabState = cerrada). */
@@ -57,6 +61,8 @@ export interface TabState {
   muted: boolean;
   /** Fijada: va a la izquierda, solo con el ícono. */
   pinned: boolean;
+  /** En segundo plano y usando mucha CPU desde hace un rato (un clic en el ícono la duerme). */
+  highCpu: boolean;
 }
 
 export interface DownloadsUiState {
@@ -167,6 +173,8 @@ export const IPC = {
   reload: 'callisto:reload',
   stop: 'callisto:stop',
   dismissNotice: 'callisto:dismiss-notice',
+  noticeAction: 'callisto:notice-action',
+  sleepTab: 'callisto:sleep-tab',
   uiReady: 'callisto:ui-ready',
   newTab: 'callisto:new-tab',
   closeTab: 'callisto:close-tab',
@@ -287,6 +295,10 @@ export interface CallistoUiApi {
   /** Ir a una pestaña abierta (de cualquier ventana del perfil). */
   switchToTab(id: number): void;
   onFocusTabSearch(cb: () => void): void;
+  /** Botón de un aviso de la pestaña activa. */
+  noticeAction(noticeId: number, action: NoticeAction): void;
+  /** Dormir una pestaña (el ícono de "usa mucha CPU"). */
+  sleepTab(id: number): void;
   /** Silenciar o devolver el sonido a una pestaña. */
   toggleMute(id: number): void;
   /** Colores reales de la franja de pestañas (fondo y texto, #rrggbb) para los botones de ventana de Windows. */

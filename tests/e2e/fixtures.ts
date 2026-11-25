@@ -203,6 +203,12 @@ export async function startServer(): Promise<TestServer> {
         return res.end("self.addEventListener('activate', (e) => e.waitUntil(clients.claim())); setInterval(() => navigator.permissions.query({ name: 'notifications' }), 5);");
       case '/page3':
         return html(page('Página 3'));
+      case '/hang':
+        // Un script que no termina (al tocar el botón): "La página no responde"
+        return html(page('Se cuelga', '<button id="hang" onclick="for (;;) {}">Colgar</button>'));
+      case '/busy':
+        // Usa mucha CPU sin parar (un worker en un bucle: los workers no se frenan en segundo plano)
+        return html(page('Ocupada', `<script>new Worker(URL.createObjectURL(new Blob(['for (;;) {}'], { type: 'text/javascript' })));</script>`));
       case '/sound':
         // Un tono casi inaudible (para el ícono de audio de la pestaña); la política de Electron permite reproducir sin gesto
         return html(page('Con sonido', `<script>const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0.004; o.connect(g).connect(ctx.destination); o.start();</script>`));

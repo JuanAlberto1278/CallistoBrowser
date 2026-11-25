@@ -846,3 +846,35 @@ browser-action-list.extension-actions::part(badge) { font: 600 9px/1 "Segoe UI",
 .tab.pinned .tab-inner { padding: 0; gap: 2px; justify-content: center; }
 .tab.pinned .tab-title, .tab.pinned .tab-close { display: none; }
 .tab.pinned .tab-inner.active .tab-icon { display: grid; }
+
+/* Botones de un aviso ("La página no responde": Esperar / Detener la página) */
+.notice-action {
+  height: 24px;
+  padding: 0 10px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+.notice-action:hover { background: rgba(127, 127, 127, 0.15); }
+.notice-action:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* "Usa mucha CPU": ícono en la pestaña de fondo; un clic la duerme */
+.tab-cpu {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #c77700;
+}
+.tab-cpu:hover { background: var(--active); }
+.tab-cpu:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tab.pinned.has-cpu { flex-basis: 62px; }
+.tab.pinned.has-cpu.has-audio { flex-basis: 84px; }

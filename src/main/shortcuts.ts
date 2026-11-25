@@ -3,6 +3,7 @@ import type { Input } from 'electron';
 export type ShortcutAction =
   | 'focus-address-bar'
   | 'tab-search'
+  | 'task-manager'
   | 'back'
   | 'forward'
   | 'reload'
@@ -52,6 +53,9 @@ export function matchShortcut(input: Input, ctx: { fromPage: boolean; isLoading:
 
   // Buscar entre las pestañas abiertas
   if (ctrl && shift && k === 'a') return 'tab-search';
+
+  // Administrador de tareas (como en Chrome y Edge)
+  if (shift && !input.control && !input.meta && !input.alt && k === 'Escape') return 'task-manager';
 
   // Navegación
   if ((input.alt && !input.control && k === 'ArrowLeft') || k === 'BrowserBack') return 'back';

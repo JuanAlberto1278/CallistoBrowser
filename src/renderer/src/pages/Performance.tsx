@@ -29,7 +29,18 @@ export function MemoryNow() {
           <span data-testid="memory-asleep">{usage.asleepTabs}</span> {usage.asleepTabs === 1 ? 'dormida' : 'dormidas'} · memoria reservada (el Administrador de
           tareas suele mostrar algo menos)
         </span>
+        {usage.savedTodayMb > 0 && (
+          <>
+            <br />
+            <span className="muted small" data-testid="memory-saved">
+              Hoy, las pestañas dormidas liberaron al menos {usage.savedTodayMb} MB.
+            </span>
+          </>
+        )}
       </span>
+      <button className="btn" data-testid="open-task-manager" onClick={() => api.openTaskManager()}>
+        Administrador de tareas
+      </button>
     </div>
   );
 }

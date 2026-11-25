@@ -26,6 +26,8 @@ export interface Settings {
   neverSleepSites: string[];
   /** Preguntar antes de cerrar una ventana con 2 pestañas o más. */
   confirmCloseTabs: boolean;
+  /** Si a Windows le falta memoria, dormir las pestañas sin usar desde hace 1 minuto. */
+  sleepWhenLowMemory: boolean;
   /** Tema elegido (id de un predeterminado o de uno propio). */
   theme: string;
   /** Temas creados por el usuario. */
@@ -35,7 +37,7 @@ export interface Settings {
 export const SLEEP_OPTIONS = [0, 5, 15, 30, 60, 120] as const;
 export type SleepMinutes = (typeof SLEEP_OPTIONS)[number];
 
-export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always', offerPasswords: true, sleepTabsAfter: 15, neverSleepSites: [], confirmCloseTabs: true, theme: SYSTEM_THEME_ID, customThemes: [] };
+export const DEFAULT_SETTINGS: Settings = { searchEngine: 'google', startup: 'restore', downloadDir: null, bookmarksBar: 'always', offerPasswords: true, sleepTabsAfter: 15, neverSleepSites: [], confirmCloseTabs: true, sleepWhenLowMemory: true, theme: SYSTEM_THEME_ID, customThemes: [] };
 
 /** Ruta absoluta de Windows (C:\… o \\servidor\…). */
 const ABSOLUTE_WIN_PATH = /^([a-zA-Z]:\\|\\\\[^\\]+\\)/;
@@ -52,6 +54,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     sleepTabsAfter: (SLEEP_OPTIONS as readonly unknown[]).includes(r.sleepTabsAfter) ? (r.sleepTabsAfter as SleepMinutes) : DEFAULT_SETTINGS.sleepTabsAfter,
     neverSleepSites: sanitizeSites(r.neverSleepSites),
     confirmCloseTabs: typeof r.confirmCloseTabs === 'boolean' ? r.confirmCloseTabs : DEFAULT_SETTINGS.confirmCloseTabs,
+    sleepWhenLowMemory: typeof r.sleepWhenLowMemory === 'boolean' ? r.sleepWhenLowMemory : DEFAULT_SETTINGS.sleepWhenLowMemory,
     ...sanitizeThemes(r.theme, r.customThemes),
   };
 }

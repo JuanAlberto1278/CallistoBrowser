@@ -21,6 +21,7 @@ const api: CallistoInternalApi = {
     defaultBrowser: () => ipcRenderer.invoke(INTERNAL_IPC.settingsDefaultBrowser),
     updateStatus: () => ipcRenderer.invoke(INTERNAL_IPC.settingsUpdateStatus),
     memoryUsage: () => ipcRenderer.invoke(INTERNAL_IPC.settingsMemory),
+    openTaskManager: () => ipcRenderer.send(INTERNAL_IPC.settingsOpenTaskManager),
     checkUpdate: () => ipcRenderer.invoke(INTERNAL_IPC.settingsCheckUpdate),
     installUpdate: () => ipcRenderer.send(INTERNAL_IPC.settingsInstallUpdate),
     makeDefault: () => ipcRenderer.send(INTERNAL_IPC.settingsMakeDefault),
@@ -69,6 +70,10 @@ const api: CallistoInternalApi = {
     options: (id) => ipcRenderer.send(INTERNAL_IPC.extensionsOptions, String(id)),
     checkUpdates: () => ipcRenderer.invoke(INTERNAL_IPC.extensionsUpdate),
     openStore: (id) => ipcRenderer.send(INTERNAL_IPC.extensionsOpenStore, id === undefined ? undefined : String(id)),
+  },
+  tasks: {
+    list: () => ipcRenderer.invoke(INTERNAL_IPC.tasksList),
+    end: (pid) => ipcRenderer.invoke(INTERNAL_IPC.tasksEnd, Number(pid)),
   },
   openPage: (page) => ipcRenderer.send(INTERNAL_IPC.openPage, String(page)),
 };

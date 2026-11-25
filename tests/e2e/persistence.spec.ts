@@ -214,7 +214,14 @@ test('permisos: se pregunta; Bloquear con "Recordar" ya no vuelve a preguntar (n
 
   await restart();
   await visit(`${server.base}/page1`, 'Página 1');
-  expect(await c.tab.evaluate(() => navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(() => 'concedido', (e) => e.name))).toBe('NotAllowedError');
+  // La pestaña restaurada puede seguir terminando su propia carga de /page1 mientras se vuelve a visitar: si la página
+  // cambia en medio de la consulta, se repite (en 1.3 y 1.4 falló así, de vez en cuando)
+  let result = '';
+  await expectEventually(async () => {
+    result = await c.tab.evaluate(() => navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(() => 'concedido', (e) => e.name)).catch(() => '');
+    return result !== '';
+  });
+  expect(result).toBe('NotAllowedError');
   await expect(c.ui.getByTestId('permission')).toBeHidden();
 });
 

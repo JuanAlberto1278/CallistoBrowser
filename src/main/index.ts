@@ -4,6 +4,9 @@ import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 import { configureUserData, prepareQuarantine, quarantineDir } from './paths';
 import { configureTestMode } from './test-mode';
+import { configureMemorySavings } from './memory-savings';
+import { closeTaskManager, configureTaskManager, openTaskManager, registerTaskManagerIpc, taskManagerContents } from './task-manager';
+import { startCpuWatch } from './cpu-watch';
 import { configureMemorySaving } from './chromium-flags';
 import { registerInternalScheme, serveInternalPages, serveInternalUi, UI_ORIGIN } from './internal-protocol';
 import { BrowserWindowController } from './window';
@@ -116,6 +119,20 @@ if (!app.requestSingleInstanceLock()) {
     );
     profiles.cleanupDeleted();
     registerProfilesIpc(profiles);
+
+    // Recursos (1.4.0): Administrador de tareas (Shift+Esc), memoria liberada hoy y aviso de CPU alta
+    configureMemorySavings(join(app.getPath('userData'), 'memory-savings.json'));
+    configureTaskManager({ session: internalSession, preload: join(__dirname, '../preload/internal.js'), uiSession });
+    registerTaskManagerIpc();
+    BrowserWindowController.hooks = {
+      openTaskManager,
+      auxiliaryContents: () => {
+        const wc = taskManagerContents();
+        return wc ? [wc] : [];
+      },
+      lastClosed: closeTaskManager,
+    };
+    startCpuWatch();
 
     app.on('before-quit', () => {
       BrowserWindowController.quitting = true; // salir no pregunta "¿Cerrar N pestañas?"

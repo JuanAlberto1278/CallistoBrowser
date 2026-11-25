@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type DragEvent 
 import type { TabState } from '../../shared/ipc';
 import { displayUrl } from '../../shared/omnibox';
 import { GROUP_COLORS, type TabGroupState } from '../../shared/tab-groups';
-import { CloseIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon, SpeakerIcon, SpeakerMutedIcon } from './icons';
+import { CloseIcon, GaugeIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon, SpeakerIcon, SpeakerMutedIcon } from './icons';
 
 const DRAG_TAB = 'application/x-callisto-tab';
 const DRAG_GROUP = 'application/x-callisto-group';
@@ -104,7 +104,7 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
 
   const visible = tabs.filter((t) => t.groupId === null || !groupById.get(t.groupId)?.collapsed);
   const visibleTabs = visible.filter((t) => !t.pinned).length;
-  const pinnedWidth = visible.filter((t) => t.pinned).reduce((w, t) => w + PINNED_WIDTH + (t.audible || t.muted ? AUDIO_WIDTH : 0), 0);
+  const pinnedWidth = visible.filter((t) => t.pinned).reduce((w, t) => w + PINNED_WIDTH + (t.audible || t.muted ? AUDIO_WIDTH : 0) + (t.highCpu ? AUDIO_WIDTH : 0), 0);
 
   return (
     <div
@@ -184,7 +184,7 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                   data-group-id={t.groupId ?? ''}
                   data-asleep={t.asleep}
                   data-pinned={t.pinned}
-                  className={['tab', active ? 'active' : '', group ? 'grouped' : '', t.asleep ? 'asleep' : '', t.pinned ? 'pinned' : '', t.audible || t.muted ? 'has-audio' : '', dropAt === i ? 'drop-before' : '', dropAt === i + 1 && i === tabs.length - 1 ? 'drop-after' : ''].join(' ')}
+                  className={['tab', active ? 'active' : '', group ? 'grouped' : '', t.asleep ? 'asleep' : '', t.pinned ? 'pinned' : '', t.audible || t.muted ? 'has-audio' : '', t.highCpu ? 'has-cpu' : '', dropAt === i ? 'drop-before' : '', dropAt === i + 1 && i === tabs.length - 1 ? 'drop-after' : ''].join(' ')}
                   style={color ? { ['--group' as string]: color } : undefined}
                   title={(t.url && t.url !== 'about:blank' ? `${title}\n${displayUrl(t.url)}` : title) + (t.asleep ? '\nDormida para ahorrar memoria' : '')}
                   draggable
@@ -222,6 +222,21 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                         <GlobeIcon />
                       )}
                     </span>
+                    {t.highCpu && (
+                      <button
+                        className="tab-cpu"
+                        data-testid="tab-cpu"
+                        aria-label={`${title} usa mucha CPU. Dormir la pestaña`}
+                        title="Usa mucha CPU en segundo plano. Clic para dormirla"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          api.sleepTab(t.id);
+                        }}
+                      >
+                        <GaugeIcon />
+                      </button>
+                    )}
                     {(t.audible || t.muted) && (
                       <button
                         className={`tab-audio ${t.muted ? 'muted' : ''}`}

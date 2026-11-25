@@ -211,6 +211,7 @@ export interface AppMenuActions {
   downloads(): void;
   passwords(): void;
   extensions(): void;
+  taskManager?(): void;
   zoom(direction: 'in' | 'out' | 'reset'): void;
   find(): void;
   settings(): void;
@@ -239,6 +240,7 @@ export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[];
     { label: 'Descargas', accelerator: 'Ctrl+J', registerAccelerator: false, click: () => a.downloads() },
     { label: 'Contraseñas', click: () => a.passwords() },
     { label: 'Extensiones', click: () => a.extensions() },
+    { label: 'Administrador de tareas', accelerator: 'Shift+Esc', registerAccelerator: false, click: () => a.taskManager?.() },
     SEP,
     {
       label: `Zoom (${info.zoomPercent} %)`,

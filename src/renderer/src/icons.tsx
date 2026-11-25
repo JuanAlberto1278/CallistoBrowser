@@ -102,3 +102,6 @@ export const SpeakerIcon = () => (
 export const SpeakerMutedIcon = () => (
   <svg {...base} width={14} height={14}><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" /><path d="M11 6l3.5 4M14.5 6 11 10" /></svg>
 );
+export const GaugeIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M2.5 11.5a5.5 5.5 0 1 1 11 0" /><path d="M8 11.5l3-4" /><circle cx="8" cy="11.5" r="0.6" /></svg>
+);

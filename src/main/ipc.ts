@@ -6,6 +6,9 @@ import { VaultError } from './password-vault';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, hostOf as loginHost, isLoginOrigin } from '../shared/passwords';
 import { BrowserWindowController } from './window';
 import { Tab } from './tab';
+import { resources } from './resource-monitor';
+import { memorySavings } from './memory-savings';
+import { openTaskManager, taskManagerContents } from './task-manager';
 import { buildSuggestions, matchesQuery, tabSuggestion, type OpenTabCandidate } from './suggestions';
 import { PERMISSION_LABELS } from './permissions';
 import { SITE_PERMISSIONS, type SitePermission } from './profile-store';
@@ -75,6 +78,14 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   ipcMain.on(IPC.stop, (e) => from(e)?.active.stop());
   ipcMain.on(IPC.dismissNotice, (e, id: unknown) => {
     if (typeof id === 'number') from(e)?.active.dismissNotice(id);
+  });
+  ipcMain.on(IPC.noticeAction, (e, id: unknown, action: unknown) => {
+    if (typeof id === 'number' && (action === 'wait' || action === 'stop')) from(e)?.active.noticeAction(id, action);
+  });
+  ipcMain.on(IPC.sleepTab, (e, id: unknown) => {
+    const c = from(e);
+    const tab = c && tabOf(c, id);
+    if (c && tab) c.sleepFromIndicator(tab);
   });
 
   ipcMain.on(IPC.newTab, (e) => from(e)?.newTab());
@@ -366,14 +377,15 @@ function registerInternalIpc(): void {
   });
   ipcMain.handle(INTERNAL_IPC.settingsMemory, (e): MemoryUsage => {
     fromInternal(e, 'settings') ?? denied();
-    const metrics = app.getAppMetrics();
+    const metrics = resources.sample();
     const tabs = [...BrowserWindowController.all].flatMap((w) => w.tabs);
     const asleep = tabs.filter((t) => t.asleep).length;
     return {
-      mb: Math.round(metrics.reduce((sum, m) => sum + (m.memory.privateBytes ?? m.memory.workingSetSize), 0) / 1024),
+      mb: Math.round(metrics.reduce((sum, m) => sum + m.memoryKb, 0) / 1024),
       processes: metrics.length,
       awakeTabs: tabs.length - asleep,
       asleepTabs: asleep,
+      savedTodayMb: memorySavings().todayMb,
     };
   });
   ipcMain.handle(INTERNAL_IPC.settingsUpdateStatus, (e) => {
@@ -384,6 +396,9 @@ function registerInternalIpc(): void {
     fromInternal(e, 'settings') ?? denied();
     await updater.check();
     return { enabled: updater.enabled, status: updater.status };
+  });
+  ipcMain.on(INTERNAL_IPC.settingsOpenTaskManager, (e) => {
+    if (fromInternal(e, 'settings')) openTaskManager();
   });
   ipcMain.on(INTERNAL_IPC.settingsInstallUpdate, (e) => {
     if (fromInternal(e, 'settings')) updater.installAndRestart();
@@ -545,6 +560,8 @@ function registerInternalIpc(): void {
   registerExtensionsPageIpc();
   // Tema de las páginas internas: cualquiera de ellas (desde su frame principal)
   ipcMain.handle(INTERNAL_IPC.themeGet, (e) => {
+    // El Administrador de tareas (su propia ventana): con el tema de la ventana actual
+    if (e.sender === taskManagerContents() && e.senderFrame === e.sender.mainFrame) return themeVars((BrowserWindowController.current()?.ctx.profile ?? denied()).theme);
     const tab = Tab.fromWebContents(e.sender);
     const win = tab && tab.kind === 'internal' && e.senderFrame === e.sender.mainFrame ? BrowserWindowController.ofTab(tab) : undefined;
     return themeVars((win?.ctx.profile ?? denied()).theme);

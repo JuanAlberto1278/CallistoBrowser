@@ -82,6 +82,8 @@ button, select, input {
   cursor: default;
 }
 .btn:hover { background: var(--hover); }
+.btn:disabled { opacity: 0.5; }
+.btn:disabled:hover { background: var(--surface); }
 .btn:active { background: var(--active); }
 .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .btn.primary:hover { filter: brightness(1.08); }
@@ -359,3 +361,22 @@ a { color: var(--accent); }
 .memory-now strong { font-size: 18px; }
 .never-sleep { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; }
 .never-sleep-add input { flex: 1; height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--field-border); background: var(--surface); }
+
+/* ---------------------------------------------------------------- administrador de tareas (su propia ventana) */
+
+.tasks { display: flex; flex-direction: column; height: 100vh; }
+.tasks-table { flex: 1; overflow: auto; background: var(--surface); }
+.tasks table { font-size: 13px; }
+.tasks thead th { position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0; }
+.tasks th.num, .tasks td.num { text-align: right; white-space: nowrap; width: 1%; }
+.tasks td:last-child, .tasks th:last-child { padding-right: 14px; }
+.th-sort { width: 100%; height: 30px; padding: 0 8px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; text-align: inherit; cursor: default; }
+.th-sort:hover { background: var(--hover); }
+.tasks tbody tr { cursor: default; }
+.tasks tbody tr:hover { background: var(--hover); }
+.tasks tbody tr.selected { background: var(--active); }
+.tasks tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.task-title { display: block; overflow-wrap: anywhere; }
+.task-member { display: block; padding-left: 12px; }
+.tasks-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; border-top: 1px solid var(--border); }
+.tasks-footer .btn { flex-shrink: 0; }

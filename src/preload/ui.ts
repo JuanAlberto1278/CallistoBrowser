@@ -56,6 +56,8 @@ const api: CallistoUiApi = {
   onFocusTabSearch: (cb) => {
     ipcRenderer.on(IPC.focusTabSearch, () => cb());
   },
+  noticeAction: (noticeId, action) => ipcRenderer.send(IPC.noticeAction, Number(noticeId), String(action)),
+  sleepTab: (id) => ipcRenderer.send(IPC.sleepTab, Number(id)),
   toggleMute: (id) => ipcRenderer.send(IPC.toggleMute, Number(id)),
   setTitleBarColors: (color, symbolColor) => ipcRenderer.send(IPC.titleBarColors, String(color), String(symbolColor)),
   answerExtensionInstall: (id, allow) => ipcRenderer.send(IPC.answerExtensionInstall, Number(id), allow === true),

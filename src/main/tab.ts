@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type Referrer, type WebContents } from 'electron';
 import type { PermissionRequest, Profile } from './profile';
-import type { FindState, Notice, PermissionPrompt, TabState } from '../shared/ipc';
+import type { FindState, Notice, NoticeAction, PermissionPrompt, TabState } from '../shared/ipc';
 import type { ResolvedInput } from '../shared/omnibox';
 import { classifyUrl } from '../shared/url-security';
 import { stepZoom, zoomPercent } from '../shared/zoom';
@@ -72,6 +72,12 @@ let nextTabId = 1;
 let nextPromptId = 1;
 
 /** Una pestaña: un WebContentsView con su navegación, búsqueda, zoom, avisos y permisos independientes. */
+/** Botones del aviso "La página no responde". */
+const UNRESPONSIVE_ACTIONS: NonNullable<Notice['actions']> = [
+  { id: 'wait', label: 'Esperar' },
+  { id: 'stop', label: 'Detener la página' },
+];
+
 export class Tab extends EventEmitter<TabEvents> {
   private static readonly byContentsId = new Map<number, Tab>();
 
@@ -94,6 +100,18 @@ export class Tab extends EventEmitter<TabEvents> {
   readonly newTabPage: boolean;
   private groupIdValue: number | null = null;
   private pinnedValue = false;
+  private highCpuValue = false;
+
+  /** En segundo plano y usando mucha CPU desde hace un rato (lo decide cpu-watch.ts). */
+  get highCpu(): boolean {
+    return this.highCpuValue;
+  }
+
+  set highCpu(on: boolean) {
+    if (on === this.highCpuValue) return;
+    this.highCpuValue = on;
+    this.queueState();
+  }
 
   /** Fijada (la ordena la ventana: siempre primero). */
   get pinned(): boolean {
@@ -263,6 +281,14 @@ export class Tab extends EventEmitter<TabEvents> {
       if (details.reason === 'clean-exit') return;
       this.showNotice('warning', 'La página dejó de funcionar. Presioná F5 para volver a cargarla.');
     });
+    // La página no responde (un script que no termina): esperar o detenerla, como en Chrome y Edge
+    wc.on('unresponsive', () => this.showNotice('warning', 'La página no responde. Podés esperar a que vuelva a responder o detenerla.', UNRESPONSIVE_ACTIONS));
+    wc.on('responsive', () => {
+      if (this.noticeState?.actions === UNRESPONSIVE_ACTIONS) {
+        this.noticeState = null;
+        this.queueState();
+      }
+    });
 
     wc.on('before-input-event', (e, input) => this.emit('input', e, input));
     // Empieza o deja de sonar: el ícono de audio de la pestaña
@@ -388,6 +414,7 @@ export class Tab extends EventEmitter<TabEvents> {
       audible: !p && !wc.isDestroyed() && wc.isCurrentlyAudible(),
       muted: !wc.isDestroyed() && wc.isAudioMuted(),
       pinned: this.pinnedValue,
+      highCpu: this.highCpuValue,
       groupId: this.groupId,
       permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
       passwordOffer: this.passwordOfferValue?.offer ?? null,
@@ -588,9 +615,18 @@ export class Tab extends EventEmitter<TabEvents> {
     return this.noticeState;
   }
 
-  showNotice(kind: Notice['kind'], text: string): void {
-    this.noticeState = { id: ++Tab.noticeSeq, kind, text };
+  showNotice(kind: Notice['kind'], text: string, actions?: Notice['actions']): void {
+    this.noticeState = { id: ++Tab.noticeSeq, kind, text, ...(actions ? { actions } : {}) };
     this.queueState();
+  }
+
+  /** Un botón del aviso. "Detener la página" termina su proceso (queda "La página dejó de funcionar", F5 la recarga). */
+  noticeAction(id: number, action: NoticeAction): void {
+    const n = this.noticeState;
+    if (!n || n.id !== id || !n.actions?.some((a) => a.id === action)) return;
+    this.noticeState = null;
+    this.queueState();
+    if (action === 'stop' && !this.webContents.isDestroyed()) this.webContents.forcefullyCrashRenderer();
   }
 
   dismissNotice(id: number): void {
