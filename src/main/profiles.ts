@@ -184,7 +184,7 @@ export class ProfileManager implements ProfilesApi {
       return w.win;
     },
     removeWindow: (win: BaseWindow) => {
-      for (const w of BrowserWindowController.all) if (w.win === win && !win.isDestroyed()) win.close();
+      for (const w of BrowserWindowController.all) if (w.win === win && !win.isDestroyed()) w.forceClose();
     },
     confirmInstall: (profile, source, prompt) => this.windowFor(profile, source)?.askExtensionInstall(prompt) ?? Promise.resolve(false),
     parentWindow: (profile, source) => this.windowFor(profile, source)?.win ?? null,
@@ -194,7 +194,9 @@ export class ProfileManager implements ProfilesApi {
     },
     assignTabDetails: (details, wc) => {
       const tab = Tab.fromWebContents(wc);
-      if (tab) (details as chrome.tabs.Tab & { groupId: number }).groupId = tab.groupId ?? -1;
+      if (!tab) return;
+      (details as chrome.tabs.Tab & { groupId: number }).groupId = tab.groupId ?? -1;
+      details.pinned = tab.pinned;
     },
   };
 
@@ -335,7 +337,7 @@ export class ProfileManager implements ProfilesApi {
     rt?.saver.disable();
     this.registry.remove(id);
     if (this.openWindows().length === doomed.length) this.openProfile(this.registry.lastUsed);
-    for (const w of doomed) w.win.close();
+    for (const w of doomed) w.forceClose();
     if (rt) {
       this.runtimes.delete(id);
       await Promise.allSettled([rt.ctx.profile.session.clearStorageData(), rt.ctx.profile.session.clearCache()]);

@@ -51,6 +51,12 @@ export interface TabState {
   passwordOffer: PasswordOffer | null;
   /** Dormida para ahorrar memoria (se vuelve a cargar al activarla). */
   asleep: boolean;
+  /** Está reproduciendo sonido ahora. */
+  audible: boolean;
+  /** Silenciada por el usuario. */
+  muted: boolean;
+  /** Fijada: va a la izquierda, solo con el ícono. */
+  pinned: boolean;
 }
 
 export interface DownloadsUiState {
@@ -104,7 +110,10 @@ export interface PermissionPrompt {
 
 /** Sugerencia de la barra de direcciones. */
 export interface Suggestion {
-  kind: 'search' | 'url' | 'history';
+  /** 'tab': una pestaña abierta (elegirla la activa, no navega); 'bookmark': un favorito. */
+  kind: 'search' | 'url' | 'history' | 'tab' | 'bookmark';
+  /** Pestaña abierta a la que lleva (solo 'tab'). */
+  tabId?: number;
   /** Línea principal (título, dirección o texto buscado). */
   text: string;
   /** Línea secundaria (dirección o "Buscar en Google"). */
@@ -195,12 +204,16 @@ export const IPC = {
   answerPasswordOffer: 'callisto:answer-password-offer',
   answerExtensionInstall: 'callisto:answer-extension-install',
   titleBarColors: 'callisto:title-bar-colors',
+  toggleMute: 'callisto:toggle-mute',
+  suggestTabs: 'callisto:suggest-tabs',
+  switchToTab: 'callisto:switch-to-tab',
   extensionMenu: 'callisto:extension-menu',
   // principal -> interfaz
   state: 'callisto:state',
   favicons: 'callisto:favicons',
   focusAddressBar: 'callisto:focus-address-bar',
   focusFind: 'callisto:focus-find',
+  focusTabSearch: 'callisto:focus-tab-search',
 } as const;
 
 export const MAX_ADDRESS_INPUT = 8192;
@@ -269,6 +282,13 @@ export interface CallistoUiApi {
   moveGroup(id: number, index: number): void;
   /** Respuesta a la oferta de guardar una contraseña ('save' puede llevar el usuario corregido). */
   answerPasswordOffer(id: number, answer: 'save' | 'never' | 'dismiss', username?: string): void;
+  /** Pestañas abiertas que coinciden (todas, si `text` está vacío): el buscador de pestañas (Ctrl+Shift+A). */
+  suggestTabs(text: string): Promise<Suggestion[]>;
+  /** Ir a una pestaña abierta (de cualquier ventana del perfil). */
+  switchToTab(id: number): void;
+  onFocusTabSearch(cb: () => void): void;
+  /** Silenciar o devolver el sonido a una pestaña. */
+  toggleMute(id: number): void;
   /** Colores reales de la franja de pestañas (fondo y texto, #rrggbb) para los botones de ventana de Windows. */
   setTitleBarColors(color: string, symbolColor: string): void;
   /** Respuesta a "¿Agregar la extensión?". */

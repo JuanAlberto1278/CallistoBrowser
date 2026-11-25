@@ -14,6 +14,18 @@ export const invisibleForTests = !app.isPackaged && process.env.CALLISTO_TEST_IN
  */
 export const SLEEP_MINUTE_MS = !app.isPackaged && Number(process.env.CALLISTO_TEST_MINUTE_MS) > 0 ? Number(process.env.CALLISTO_TEST_MINUTE_MS) : 60_000;
 
+/**
+ * Respuesta al "¿Cerrar N pestañas?" en las pruebas automáticas (solo sin empaquetar): CALLISTO_TEST_CLOSE_ANSWER =
+ * close | cancel. Sin la variable, en modo de pruebas se cierra (como si el usuario aceptara).
+ */
+export const TEST_CLOSE_ANSWER: 'close' | 'cancel' | null = app.isPackaged
+  ? null
+  : process.env.CALLISTO_TEST_CLOSE_ANSWER === 'cancel'
+    ? 'cancel'
+    : process.env.CALLISTO_TEST_CLOSE_ANSWER === 'close' || invisibleForTests
+      ? 'close'
+      : null;
+
 /** Debe llamarse antes de `app.whenReady()`. */
 export function configureTestMode(): void {
   if (!invisibleForTests) return;

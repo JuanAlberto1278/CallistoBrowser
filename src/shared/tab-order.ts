@@ -34,3 +34,8 @@ export function cycleIndex(count: number, current: number, step: 1 | -1): number
   if (count <= 0) return 0;
   return (current + step + count) % count;
 }
+
+/** Las pestañas fijadas siempre primero, conservando el orden de cada parte. */
+export function keepPinnedFirst<T extends { pinned: boolean }>(list: readonly T[]): T[] {
+  return [...list.filter((t) => t.pinned), ...list.filter((t) => !t.pinned)];
+}

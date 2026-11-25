@@ -1,13 +1,13 @@
 import { basename, dirname, join } from 'node:path';
 import { app, BaseWindow, clipboard, dialog, Menu, MenuItem, nativeTheme, screen, WebContentsView, type BrowserWindowConstructorOptions, type ContextMenuParams, type Event, type Input, type MenuItemConstructorOptions, type Rectangle, type Referrer, type Session, type WebContents } from 'electron';
 import { Tab, type TabKind } from './tab';
-import { showWindow, SLEEP_MINUTE_MS } from './test-mode';
+import { showWindow, SLEEP_MINUTE_MS, TEST_CLOSE_ANSWER } from './test-mode';
 import { AutofillPopup } from './autofill-popup';
 import { stopOrphanServiceWorkers } from './service-worker-reaper';
 import { updater } from './updater';
 import type { Profile } from './profile';
 import { matchShortcut, type ShortcutAction } from './shortcuts';
-import type { ClosedTabs, TabSnapshot } from './closed-tabs';
+import { closedLabel, type ClosedTabs, type TabSnapshot } from './closed-tabs';
 import { appMenuTemplate, pageMenuTemplate, tabMenuTemplate, uiEditMenuTemplate, type EditCommand } from './context-menu';
 import { trimSnapshot, type SavedTab, type SavedWindow } from './session-store';
 import { IPC, MAX_OVERLAY_HEIGHT, type BookmarksUiState, type DownloadsUiState, type OpenWhere, type WindowState } from '../shared/ipc';
@@ -17,7 +17,7 @@ import type { ProfileInfo, WindowProfile } from '../shared/profiles';
 import { GROUP_COLORS, groupDropIndex, isGroupColor, keepGroupsTogether, nextGroupColor, sanitizeGroupTitle, type GroupAction, type TabGroupState } from '../shared/tab-groups';
 import { sanitizeFileName, siteOf } from '../shared/downloads';
 import { TAB_STRIP_HEIGHT, chromeHeight } from '../shared/layout';
-import { childInsertIndex, cycleIndex, indexAfterClose, moveItem } from '../shared/tab-order';
+import { childInsertIndex, cycleIndex, indexAfterClose, keepPinnedFirst, moveItem } from '../shared/tab-order';
 import { matchesSite, normalizeSite } from '../shared/settings';
 import { resolveInput, searchUrl, type ResolvedInput } from '../shared/omnibox';
 import { internalPageOf, internalUrl, type InternalPage } from '../shared/internal-pages';
@@ -132,6 +132,9 @@ export class BrowserWindowController {
 
   private static lastFocused: BrowserWindowController | undefined;
 
+  /** Callisto está saliendo (o Windows se apaga): las ventanas se cierran sin preguntar. */
+  static quitting = false;
+
   readonly id = nextWindowId++;
   readonly win: BaseWindow;
   readonly ui: WebContentsView;
@@ -159,6 +162,9 @@ export class BrowserWindowController {
   readonly autofill: AutofillPopup;
   /** Revisa cada minuto qué pestañas dormir. */
   private readonly sleepTimer: NodeJS.Timeout;
+  /** El cierre ya se confirmó (o no hace falta preguntar). */
+  private closeConfirmed = false;
+  private askingClose = false;
   /** "¿Agregar la extensión?" esperando la respuesta del usuario. */
   private extensionPrompt: { prompt: ExtensionInstallPrompt; resolve: (allow: boolean) => void } | null = null;
 
@@ -218,8 +224,17 @@ export class BrowserWindowController {
       this.applyNativeTheme();
     });
     // Windows va a cerrar la sesión o apagarse: se guardan todas las ventanas antes de que se cierren una por una
-    this.win.on('query-session-end', () => this.ctx.session.finalSave());
-    this.win.on('close', () => {
+    this.win.on('query-session-end', () => {
+      BrowserWindowController.quitting = true;
+      this.ctx.session.finalSave();
+    });
+    this.win.on('close', (e) => {
+      // "¿Cerrar 12 pestañas?" (lo cierra el usuario y hay 2 o más). Se cancela este cierre y se cierra al confirmar.
+      if (this.shouldConfirmClose()) {
+        e.preventDefault();
+        void this.confirmClose();
+        return;
+      }
       // Si quedan otras ventanas, esta va a "cerradas recientemente"; si es la última, queda como sesión guardada.
       if (BrowserWindowController.all.size > 1) this.recordClosedWindow();
       // Descargas esperando autorización en esta ventana: pasan a otra del mismo perfil; si no hay, se rechazan
@@ -269,6 +284,7 @@ export class BrowserWindowController {
       opts.restore.tabs.forEach((s, i) => {
         const t = new Tab(ctx.profile, { pending: s });
         t.groupId = s.groupId != null ? (ids.get(s.groupId) ?? null) : null;
+        t.pinned = s.pinned === true;
         this.insertTab(t, i, false, 'page', false);
       });
       this.activate(this.tabs[active]!, { focus: 'page' });
@@ -493,7 +509,9 @@ export class BrowserWindowController {
 
   /** Las pestañas de cada grupo juntas; los grupos sin pestañas desaparecen. */
   private tidyGroups(): void {
-    this.tabs = keepGroupsTogether(this.tabs);
+    // Las fijadas primero (nunca están en un grupo); después, las de cada grupo juntas
+    for (const t of this.tabs) if (t.pinned) t.groupId = null;
+    this.tabs = keepPinnedFirst(keepGroupsTogether(this.tabs));
     for (const id of [...this.groups.keys()]) {
       if (!this.tabs.some((t) => t.groupId === id)) {
         this.groups.delete(id);
@@ -515,6 +533,7 @@ export class BrowserWindowController {
   /** `fromExtension`: lo pide una extensión (chrome.tabs.group): queda en su lugar y sin abrir el panel. */
   createGroup(tab: Tab, fromExtension = false): number {
     const id = nextGroupId++;
+    tab.pinned = false;
     this.groups.set(id, { id, title: '', color: nextGroupColor([...this.groups.values()].map((g) => g.color)), collapsed: false });
     tab.groupId = id;
     // El grupo nuevo empieza a la izquierda del todo, antes de las demás pestañas y grupos
@@ -527,6 +546,7 @@ export class BrowserWindowController {
 
   addToGroup(tab: Tab, groupId: number): void {
     if (!this.groups.has(groupId) || tab.groupId === groupId) return;
+    tab.pinned = false;
     const end = this.groupEnd(groupId);
     const from = this.tabs.indexOf(tab);
     this.tabs = moveItem(this.tabs, from, from < end ? end - 1 : end);
@@ -632,6 +652,7 @@ export class BrowserWindowController {
     const saved = { ...savedFromSnapshot(tab.snapshot()), faviconKey: tab.state.faviconKey };
     const sleeping = new Tab(this.ctx.profile, { pending: saved, kind: tab.kind, asleep: true, openerId: tab.openerId });
     sleeping.groupId = tab.groupId;
+    sleeping.pinned = tab.pinned;
     sleeping.lastActive = tab.lastActive;
     this.insertTab(sleeping, index, false, 'none', false);
     this.removeTab(tab, { record: false, destroy: true });
@@ -666,7 +687,8 @@ export class BrowserWindowController {
     if (minutes) {
       const limit = Date.now() - minutes * SLEEP_MINUTE_MS;
       const keep = this.ctx.profile.settings.neverSleepSites;
-      for (const tab of [...this.tabs]) if (tab !== this.activeTab && tab.lastActive < limit && !matchesSite(tab.url, keep)) this.sleepTab(tab);
+      // Las fijadas no se duermen solas (son las que se usan siempre); a mano, sí
+      for (const tab of [...this.tabs]) if (tab !== this.activeTab && !tab.pinned && tab.lastActive < limit && !matchesSite(tab.url, keep)) this.sleepTab(tab);
     }
     // Una sola ventana por perfil hace la revisión (la primera), con las pestañas despiertas de todas
     const profile = this.ctx.profile;
@@ -684,8 +706,9 @@ export class BrowserWindowController {
     return copy;
   }
 
-  reopenClosed(): void {
-    const entry = this.ctx.closedTabs.pop();
+  /** Reabre una pestaña o ventana cerrada: la más reciente (Ctrl+Shift+T) o la elegida en "Cerradas recientemente". */
+  reopenClosed(fromNewest = 0): void {
+    const entry = this.ctx.closedTabs.take(fromNewest);
     if (!entry) return;
     if (entry.kind === 'window') {
       new BrowserWindowController(this.ctx, { restore: { tabs: entry.tabs.map(savedFromSnapshot), active: entry.active } });
@@ -752,6 +775,64 @@ export class BrowserWindowController {
     const source = t.colors ? t.mode : 'system';
     if (nativeTheme.themeSource !== source) nativeTheme.themeSource = source;
     this.win.setBackgroundColor(t.colors ? t.colors.toolbar : nativeTheme.shouldUseDarkColors ? '#2b2b2b' : '#f7f7f7');
+  }
+
+  /** Cerrar sin preguntar (lo pide Callisto o una extensión, no el usuario). */
+  forceClose(): void {
+    this.closeConfirmed = true;
+    if (!this.win.isDestroyed()) this.win.close();
+  }
+
+  private shouldConfirmClose(): boolean {
+    return !this.closeConfirmed && !BrowserWindowController.quitting && this.tabs.length >= 2 && this.ctx.profile.settings.confirmCloseTabs;
+  }
+
+  private async confirmClose(): Promise<void> {
+    if (this.askingClose) return;
+    this.askingClose = true;
+    try {
+      const count = this.tabs.length;
+      let close: boolean;
+      let dontAsk = false;
+      if (TEST_CLOSE_ANSWER) {
+        const g = globalThis as unknown as { __callistoCloseAsked?: number };
+        g.__callistoCloseAsked = (g.__callistoCloseAsked ?? 0) + 1;
+        close = TEST_CLOSE_ANSWER === 'close';
+      } else {
+        const r = await dialog.showMessageBox(this.win, {
+          type: 'question',
+          buttons: ['Cerrar', 'Cancelar'],
+          defaultId: 0,
+          cancelId: 1,
+          title: 'Callisto',
+          message: `¿Cerrar ${count} pestañas?`,
+          detail: 'Al cerrar la ventana se cierran todas sus pestañas. Podés volver a abrirla con Ctrl+Shift+T.',
+          checkboxLabel: 'No volver a preguntar',
+          noLink: true,
+        });
+        close = r.response === 0;
+        dontAsk = r.checkboxChecked;
+      }
+      if (close && dontAsk) this.ctx.profile.updateSettings({ confirmCloseTabs: false });
+      if (close) this.forceClose();
+    } finally {
+      this.askingClose = false;
+    }
+  }
+
+  /** Fijar o desfijar una pestaña: las fijadas van a la izquierda, sin grupo. */
+  setPinned(tab: Tab, pinned: boolean): void {
+    if (!this.tabs.includes(tab) || tab.pinned === pinned) return;
+    const from = this.tabs.indexOf(tab);
+    tab.pinned = pinned;
+    if (pinned) {
+      tab.groupId = null;
+      this.tabs = moveItem(this.tabs, from, this.tabs.filter((t) => t.pinned).length - 1); // al final de las fijadas
+    } else {
+      this.tabs = moveItem(this.tabs, from, this.tabs.filter((t) => t.pinned).length); // primera después de las fijadas
+    }
+    this.tidyGroups();
+    this.queueState();
   }
 
   /** Grupos de la ventana (para chrome.tabGroups). */
@@ -829,6 +910,11 @@ export class BrowserWindowController {
     }
     if (Object.keys(fresh).length) this.uiContents.send(IPC.favicons, fresh);
     this.uiContents.send(IPC.state, state);
+  }
+
+  /** Favicon (URL data:) de una clave, si esta ventana lo tiene (para las sugerencias de pestañas abiertas). */
+  faviconData(key: string): string | undefined {
+    return this.favicons.get(key) ?? this.findFavicon(key);
   }
 
   /** Favicon que trajo una pestaña movida desde otra ventana, o guardado de la sesión anterior. */
@@ -1178,6 +1264,12 @@ export class BrowserWindowController {
     this.uiContents.send(IPC.focusAddressBar);
   }
 
+  /** Ctrl+Shift+A: la barra de direcciones con la lista de pestañas abiertas. */
+  focusTabSearch(): void {
+    this.uiContents.focus();
+    this.uiContents.send(IPC.focusTabSearch);
+  }
+
   openFind(): void {
     this.activeTab.openFind();
     this.uiContents.focus();
@@ -1201,7 +1293,7 @@ export class BrowserWindowController {
       maximized: this.win.isMaximized(),
       tabs: this.tabs.map((t) => {
         const s = t.saved();
-        return { ...s, ...trimSnapshot(s), groupId: t.groupId };
+        return { ...s, ...trimSnapshot(s), groupId: t.groupId, pinned: t.pinned };
       }),
       active: Math.max(0, this.tabs.indexOf(this.activeTab)),
       groups: [...this.groups.values()].map((g) => ({ ...g })),
@@ -1233,6 +1325,7 @@ export class BrowserWindowController {
     const index = this.tabs.indexOf(tab);
     switch (action) {
       case 'focus-address-bar': return this.focusAddressBar();
+      case 'tab-search': return this.focusTabSearch();
       case 'back': return tab.goBack();
       case 'forward': return tab.goForward();
       case 'reload': return tab.reload(false);
@@ -1354,7 +1447,17 @@ export class BrowserWindowController {
     });
     this.popup(
       appMenuTemplate(
-        { zoomPercent: this.activeTab.state.zoomPercent, bookmarks, updateVersion: updater.status.state === 'ready' ? updater.status.version : undefined },
+        {
+          zoomPercent: this.activeTab.state.zoomPercent,
+          bookmarks,
+          updateVersion: updater.status.state === 'ready' ? updater.status.version : undefined,
+          // Las 10 más recientes, de la última hacia atrás
+          recentlyClosed: this.ctx.closedTabs
+            .entries()
+            .reverse()
+            .slice(0, 10)
+            .map((e, i) => ({ label: closedLabel(e), click: () => this.reopenClosed(i) })),
+        },
         {
           newTab: () => this.newTab(),
           newWindow: () => { new BrowserWindowController(this.ctx); },
@@ -1382,6 +1485,8 @@ export class BrowserWindowController {
           tabCount: this.tabs.length,
           tabsToRight: index < 0 ? 0 : this.tabs.length - index - 1,
           canSleep: !!tab && tab !== this.activeTab && tab.canSleep,
+          pinned: !!tab?.pinned,
+          muted: !!tab && !tab.webContents.isDestroyed() && tab.webContents.isAudioMuted(),
           neverSleepSite: tab ? this.neverSleepState(tab) : null,
           canReopen: this.ctx.closedTabs.size > 0,
           groupId: tab?.groupId ?? null,
@@ -1397,6 +1502,8 @@ export class BrowserWindowController {
           duplicate: () => tab && this.duplicate(tab),
           moveToNewWindow: () => tab && this.moveToNewWindow(tab),
           sleep: () => tab && this.sleepTab(tab),
+          pin: () => tab && this.setPinned(tab, !tab.pinned),
+          toggleMute: () => tab?.toggleMute(),
           toggleNeverSleep: () => tab && this.toggleNeverSleep(tab),
           close: () => tab && this.closeTab(tab),
           closeOthers: () => tab && this.closeOtherTabs(tab),

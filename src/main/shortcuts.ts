@@ -2,6 +2,7 @@ import type { Input } from 'electron';
 
 export type ShortcutAction =
   | 'focus-address-bar'
+  | 'tab-search'
   | 'back'
   | 'forward'
   | 'reload'
@@ -48,6 +49,9 @@ export function matchShortcut(input: Input, ctx: { fromPage: boolean; isLoading:
 
   // Barra de direcciones
   if ((ctrl && !shift && k === 'l') || (input.alt && !input.control && k === 'd') || (k === 'F6' && !input.control && !input.alt)) return 'focus-address-bar';
+
+  // Buscar entre las pestañas abiertas
+  if (ctrl && shift && k === 'a') return 'tab-search';
 
   // Navegación
   if ((input.alt && !input.control && k === 'ArrowLeft') || k === 'BrowserBack') return 'back';

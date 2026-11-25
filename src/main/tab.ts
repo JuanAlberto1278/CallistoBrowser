@@ -93,6 +93,19 @@ export class Tab extends EventEmitter<TabEvents> {
   /** Abierta por el usuario como pestaña nueva (no por una página): vacía, muestra la página de nueva pestaña. */
   readonly newTabPage: boolean;
   private groupIdValue: number | null = null;
+  private pinnedValue = false;
+
+  /** Fijada (la ordena la ventana: siempre primero). */
+  get pinned(): boolean {
+    return this.pinnedValue;
+  }
+
+  set pinned(on: boolean) {
+    if (on === this.pinnedValue) return;
+    this.pinnedValue = on;
+    if (!this.webContents.isDestroyed()) (this.webContents as unknown as NodeJS.EventEmitter).emit('tab-updated');
+    this.queueState();
+  }
 
   /** Grupo de pestañas al que pertenece (lo administra la ventana). */
   get groupId(): number | null {
@@ -252,6 +265,8 @@ export class Tab extends EventEmitter<TabEvents> {
     });
 
     wc.on('before-input-event', (e, input) => this.emit('input', e, input));
+    // Empieza o deja de sonar: el ícono de audio de la pestaña
+    wc.on('audio-state-changed', changed);
     wc.on('context-menu', (_e, params) => this.emit('context-menu', params));
     wc.on('zoom-changed', (_e, direction) => this.zoom(direction)); // Ctrl + rueda del mouse
 
@@ -370,6 +385,9 @@ export class Tab extends EventEmitter<TabEvents> {
       notice: this.noticeState,
       newTabPage: this.showsNewTabPage,
       asleep: this.asleepValue,
+      audible: !p && !wc.isDestroyed() && wc.isCurrentlyAudible(),
+      muted: !wc.isDestroyed() && wc.isAudioMuted(),
+      pinned: this.pinnedValue,
       groupId: this.groupId,
       permission: this.permissionQueue[0] ? { id: this.permissionQueue[0].id, origin: this.permissionQueue[0].origin, permissions: this.permissionQueue[0].permissions, phrase: this.permissionQueue[0].phrase } : null,
       passwordOffer: this.passwordOfferValue?.offer ?? null,
@@ -398,6 +416,13 @@ export class Tab extends EventEmitter<TabEvents> {
     this.pending = null;
     this.asleepValue = false;
     this.restore(p);
+  }
+
+  /** Silenciar la pestaña o devolverle el sonido. */
+  toggleMute(): void {
+    if (this.webContents.isDestroyed()) return;
+    this.webContents.setAudioMuted(!this.webContents.isAudioMuted());
+    this.queueState();
   }
 
   /** El usuario editó algo en la página (aviso del preload): no se duerme sola hasta que navegue. */

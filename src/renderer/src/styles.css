@@ -365,6 +365,8 @@ html, body, #root {
   padding: 0 14px;
   white-space: nowrap;
 }
+.suggestions.tab-mode { max-height: 432px; overflow-y: auto; }
+.suggestion.empty { cursor: default; }
 .suggestion.selected { background: var(--active); }
 .suggestion.hovered:not(.selected) { background: var(--hover); }
 .suggestion-icon { width: 16px; height: 16px; display: grid; place-items: center; color: var(--muted); }
@@ -818,3 +820,29 @@ browser-action-list.extension-actions::part(badge) { font: 600 9px/1 "Segoe UI",
   background: var(--focus);
   box-shadow: 0 0 0 2px var(--bg);
 }
+
+/* Audio en la pestaña: parlante (suena) o tachado (silenciada); un clic alterna */
+.tab-audio {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+}
+.tab-audio:hover { background: var(--active); }
+.tab-audio.muted { color: var(--muted); }
+.tab-audio:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+@container (max-width: 90px) {
+  .tab:not(.pinned) .tab-inner:not(.active) .tab-audio { display: none; }
+}
+
+/* Pestaña fijada: solo el ícono (más el de audio), sin título ni botón de cerrar */
+.tab.pinned { flex: 0 0 40px; min-width: 40px; }
+.tab.pinned.has-audio { flex-basis: 62px; }
+.tab.pinned .tab-inner { padding: 0; gap: 2px; justify-content: center; }
+.tab.pinned .tab-title, .tab.pinned .tab-close { display: none; }
+.tab.pinned .tab-inner.active .tab-icon { display: grid; }

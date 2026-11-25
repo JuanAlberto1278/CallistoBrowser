@@ -78,6 +78,7 @@ export function App() {
   const [favicons, setFavicons] = useState<Record<string, string>>({});
   const [focusSignal, setFocusSignal] = useState(0);
   const [findSignal, setFindSignal] = useState(0);
+  const [tabSearchSignal, setTabSearchSignal] = useState(0);
   const findHandled = useRef(0);
   /** Dónde termina cada panel que se superpone a la página (sugerencias, descargas). */
   const [overlays, setOverlays] = useState<Record<string, number>>({});
@@ -94,6 +95,7 @@ export function App() {
     api.onFavicons((f) => setFavicons((prev) => ({ ...prev, ...f })));
     api.onFocusAddressBar(() => setFocusSignal((n) => n + 1));
     api.onFocusFind(() => setFindSignal((n) => n + 1));
+    api.onFocusTabSearch(() => setTabSearchSignal((n) => n + 1));
     api.ready();
   }, [api]);
 
@@ -173,6 +175,7 @@ export function App() {
           security={tab?.security ?? 'none'}
           zoomPercent={tab?.zoomPercent ?? 100}
           focusSignal={focusSignal}
+          tabSearchSignal={tabSearchSignal}
           searchEngine={state?.searchEngine ?? 'Google'}
           onOverlay={reportSuggestions}
           starred={!!bookmarks?.starred}

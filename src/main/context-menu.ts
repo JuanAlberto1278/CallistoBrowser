@@ -138,6 +138,8 @@ export interface TabMenuInfo {
   canReopen: boolean;
   /** La pestaña se puede dormir (no es la activa, no está cargando, no suena…). */
   canSleep?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
   /** Sitio de la pestaña y si nunca se duerme (null: no es un sitio web). */
   neverSleepSite?: { site: string; listed: boolean } | null;
 }
@@ -152,6 +154,8 @@ export interface TabMenuActions {
   duplicate(): void;
   moveToNewWindow(): void;
   sleep?(): void;
+  pin?(): void;
+  toggleMute?(): void;
   toggleNeverSleep?(): void;
   close(): void;
   closeOthers(): void;
@@ -175,7 +179,11 @@ export function tabMenuTemplate(info: TabMenuInfo, a: TabMenuActions): Item[] {
   if (info.groupId != null) groupItems.push({ label: 'Quitar del grupo', click: () => a.removeFromGroup?.() });
   return tidy([
     { label: 'Nueva pestaña a la derecha', click: () => a.newTabToRight() },
-    ...groupItems,
+    // Una fijada no va en un grupo (al agregarla, se desfija): sus opciones de grupo no se muestran
+    ...(info.pinned ? [] : groupItems),
+    SEP,
+    { label: info.pinned ? 'Desfijar' : 'Fijar', click: () => a.pin?.() },
+    { label: info.muted ? 'Activar el sonido de la pestaña' : 'Silenciar la pestaña', click: () => a.toggleMute?.() },
     SEP,
     { label: 'Volver a cargar', accelerator: 'F5', registerAccelerator: false, click: () => a.reload() },
     { label: 'Duplicar', accelerator: 'Ctrl+Shift+K', registerAccelerator: false, click: () => a.duplicate() },
@@ -211,7 +219,7 @@ export interface AppMenuActions {
   installUpdate?(): void;
 }
 
-export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[]; updateVersion?: string }, a: AppMenuActions): Item[] {
+export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[]; updateVersion?: string; recentlyClosed?: Array<{ label: string; click: () => void }> }, a: AppMenuActions): Item[] {
   // Versión nueva descargada: primero en el menú (como Chrome)
   const update: Item[] = info.updateVersion ? [{ label: `Reiniciar para actualizar a ${info.updateVersion}`, click: () => a.installUpdate?.() }, SEP] : [];
   return [
@@ -222,6 +230,12 @@ export function appMenuTemplate(info: { zoomPercent: number; bookmarks?: Item[];
     SEP,
     { label: 'Favoritos', submenu: info.bookmarks?.length ? info.bookmarks : [{ label: '(vacío)', enabled: false }] },
     { label: 'Historial', accelerator: 'Ctrl+H', registerAccelerator: false, click: () => a.history() },
+    {
+      label: 'Cerradas recientemente',
+      submenu: info.recentlyClosed?.length
+        ? info.recentlyClosed.map((r, i) => ({ label: r.label.replace(/&/g, '&&'), accelerator: i === 0 ? 'Ctrl+Shift+T' : undefined, registerAccelerator: false, click: r.click }))
+        : [{ label: '(vacío)', enabled: false }],
+    },
     { label: 'Descargas', accelerator: 'Ctrl+J', registerAccelerator: false, click: () => a.downloads() },
     { label: 'Contraseñas', click: () => a.passwords() },
     { label: 'Extensiones', click: () => a.extensions() },

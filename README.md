@@ -2,7 +2,7 @@
 
 Navegador web de escritorio para Windows, basado en Electron (Chromium).
 
-**Versión actual: 1.2.0** (pestañas en la barra de título, como en Edge y Chrome). **1.1.0:** aviso de actualización en la barra, novedades, sitios que nunca se duermen y memoria en uso. **V1.0:** Instalador por usuario, navegador predeterminado, actualizaciones desde GitHub Releases, pestañas dormidas y liberación de memoria (216 MB con 5 páginas, 4 dormidas), temas y configuración completa, sobre V0.10 (extensiones), V0.9 (contraseñas), V0.8 (grupos de pestañas), V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
+**Versión actual: 1.3.0** (pestañas fijadas, parlante para silenciar, preguntar antes de cerrar varias pestañas, cerradas recientemente, pestañas abiertas y favoritos en la barra, Ctrl+Shift+A). **1.2.0:** pestañas en la barra de título, como en Edge y Chrome. **1.1.0:** aviso de actualización en la barra, novedades, sitios que nunca se duermen y memoria en uso. **V1.0:** Instalador por usuario, navegador predeterminado, actualizaciones desde GitHub Releases, pestañas dormidas y liberación de memoria (216 MB con 5 páginas, 4 dormidas), temas y configuración completa, sobre V0.10 (extensiones), V0.9 (contraseñas), V0.8 (grupos de pestañas), V0.7 (perfiles y ventanas privadas), V0.6 (favoritos), V0.5 (descargas autorizadas), V0.4 (historial, sesión, permisos), V0.3 (pestañas) y V0.2 (navegación y seguridad).
 
 ## Comandos
 
@@ -27,6 +27,7 @@ Navegador web de escritorio para Windows, basado en Electron (Chromium).
 - [09 — V0.9: contraseñas (incluye el documento de seguridad)](docs/09-v0.9-contrasenas.md)
 - [10 — V0.10: extensiones](docs/10-v0.10-extensiones.md)
 - [11 — V1.0: distribución, liviandad y temas](docs/11-v1.0-distribucion.md)
-- [12 — 1.1.0](docs/12-v1.1.md)
+- [12 — 1.1.0 y 1.2.0](docs/12-v1.1.md)
+- [13 — 1.3.0: pestañas y búsqueda (bloque 1 de la 2.0)](docs/13-v1.3.md)
 
 Las pruebas de concepto de V0.1 están en [`spikes/`](spikes/README.md), un proyecto separado.

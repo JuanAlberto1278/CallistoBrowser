@@ -12,6 +12,8 @@ export interface SavedTab extends TabSnapshot {
   faviconKey: string | null;
   /** Grupo de la pestaña (id dentro de la ventana guardada). */
   groupId?: number | null;
+  /** Fijada (1.3.0; las sesiones anteriores no lo tienen). */
+  pinned?: boolean;
 }
 
 export interface SavedWindow {
@@ -71,6 +73,7 @@ function cleanTab(raw: unknown): SavedTab | null {
     title: isStr(raw.title) ? raw.title : current.title,
     faviconKey: isStr(raw.faviconKey) ? raw.faviconKey : null,
     groupId: isNum(raw.groupId) ? raw.groupId : null,
+    pinned: raw.pinned === true,
   };
 }
 

@@ -203,6 +203,9 @@ export async function startServer(): Promise<TestServer> {
         return res.end("self.addEventListener('activate', (e) => e.waitUntil(clients.claim())); setInterval(() => navigator.permissions.query({ name: 'notifications' }), 5);");
       case '/page3':
         return html(page('Página 3'));
+      case '/sound':
+        // Un tono casi inaudible (para el ícono de audio de la pestaña); la política de Electron permite reproducir sin gesto
+        return html(page('Con sonido', `<script>const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0.004; o.connect(g).connect(ctx.destination); o.start();</script>`));
       case '/self-close':
         return html(page('Se cierra sola', '<button id="close" onclick="window.close()">Cerrar</button>'));
       case '/find':

@@ -2,11 +2,14 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type DragEvent 
 import type { TabState } from '../../shared/ipc';
 import { displayUrl } from '../../shared/omnibox';
 import { GROUP_COLORS, type TabGroupState } from '../../shared/tab-groups';
-import { CloseIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon } from './icons';
+import { CloseIcon, GlobeIcon, HistoryIcon, PlusIcon, SettingsIcon, SpeakerIcon, SpeakerMutedIcon } from './icons';
 
 const DRAG_TAB = 'application/x-callisto-tab';
 const DRAG_GROUP = 'application/x-callisto-group';
 const TAB_WIDTH = 220;
+/** Pestaña fijada: solo el ícono (y el de audio si suena o está silenciada). */
+const PINNED_WIDTH = 40;
+const AUDIO_WIDTH = 22;
 
 export function tabTitle(t: TabState): string {
   if (!t.url || t.url === 'about:blank') return 'Nueva pestaña';
@@ -99,7 +102,9 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
     setDrop(null);
   };
 
-  const visibleTabs = tabs.filter((t) => t.groupId === null || !groupById.get(t.groupId)?.collapsed).length;
+  const visible = tabs.filter((t) => t.groupId === null || !groupById.get(t.groupId)?.collapsed);
+  const visibleTabs = visible.filter((t) => !t.pinned).length;
+  const pinnedWidth = visible.filter((t) => t.pinned).reduce((w, t) => w + PINNED_WIDTH + (t.audible || t.muted ? AUDIO_WIDTH : 0), 0);
 
   return (
     <div
@@ -116,7 +121,7 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
         ref={scroller}
         // Ancho ideal: 220 px por pestaña visible (+ los encabezados de grupo); si no entra, se achica.
         // (Es explícito porque las pestañas usan container queries, que no aportan ancho propio.)
-        style={{ width: visibleTabs * TAB_WIDTH + chipsWidth }}
+        style={{ width: visibleTabs * TAB_WIDTH + chipsWidth + pinnedWidth }}
         onWheel={(e) => {
           if (scroller.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) scroller.current.scrollLeft += e.deltaY;
         }}
@@ -178,7 +183,8 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                   data-active={active}
                   data-group-id={t.groupId ?? ''}
                   data-asleep={t.asleep}
-                  className={['tab', active ? 'active' : '', group ? 'grouped' : '', t.asleep ? 'asleep' : '', dropAt === i ? 'drop-before' : '', dropAt === i + 1 && i === tabs.length - 1 ? 'drop-after' : ''].join(' ')}
+                  data-pinned={t.pinned}
+                  className={['tab', active ? 'active' : '', group ? 'grouped' : '', t.asleep ? 'asleep' : '', t.pinned ? 'pinned' : '', t.audible || t.muted ? 'has-audio' : '', dropAt === i ? 'drop-before' : '', dropAt === i + 1 && i === tabs.length - 1 ? 'drop-after' : ''].join(' ')}
                   style={color ? { ['--group' as string]: color } : undefined}
                   title={(t.url && t.url !== 'about:blank' ? `${title}\n${displayUrl(t.url)}` : title) + (t.asleep ? '\nDormida para ahorrar memoria' : '')}
                   draggable
@@ -216,6 +222,22 @@ export function TabStrip({ tabs, activeId, favicons, groups }: Props) {
                         <GlobeIcon />
                       )}
                     </span>
+                    {(t.audible || t.muted) && (
+                      <button
+                        className={`tab-audio ${t.muted ? 'muted' : ''}`}
+                        data-testid="tab-audio"
+                        data-muted={t.muted}
+                        aria-label={t.muted ? `Activar el sonido de ${title}` : `Silenciar ${title}`}
+                        title={t.muted ? 'Activar el sonido de la pestaña' : 'Silenciar la pestaña'}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          api.toggleMute(t.id);
+                        }}
+                      >
+                        {t.muted ? <SpeakerMutedIcon /> : <SpeakerIcon />}
+                      </button>
+                    )}
                     <span className="tab-title" data-testid="tab-title">{title}</span>
                     <button
                       className="tab-close"

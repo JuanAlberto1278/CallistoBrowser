@@ -50,7 +50,7 @@ export function SettingsPage() {
       </section>
 
       <section className="card" aria-labelledby="s-startup">
-        <h2 id="s-startup">Al abrir Callisto</h2>
+        <h2 id="s-startup">Al abrir y cerrar Callisto</h2>
         <label className="radio">
           <input
             type="radio"
@@ -70,6 +70,10 @@ export function SettingsPage() {
             onChange={() => update({ startup: 'newtab' })}
           />
           Abrir una pestaña nueva
+        </label>
+        <label className="row">
+          <span>Preguntar antes de cerrar una ventana con varias pestañas</span>
+          <input type="checkbox" data-testid="settings-confirm-close" checked={settings.confirmCloseTabs} onChange={(e) => update({ confirmCloseTabs: e.target.checked })} />
         </label>
       </section>
 

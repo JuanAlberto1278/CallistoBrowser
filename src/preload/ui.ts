@@ -51,6 +51,12 @@ const api: CallistoUiApi = {
     }),
   groupAction: (id, action) => ipcRenderer.send(IPC.groupAction, Number(id), String(action)),
   moveGroup: (id, index) => ipcRenderer.send(IPC.moveGroup, Number(id), Number(index)),
+  suggestTabs: (text) => ipcRenderer.invoke(IPC.suggestTabs, String(text)),
+  switchToTab: (id) => ipcRenderer.send(IPC.switchToTab, Number(id)),
+  onFocusTabSearch: (cb) => {
+    ipcRenderer.on(IPC.focusTabSearch, () => cb());
+  },
+  toggleMute: (id) => ipcRenderer.send(IPC.toggleMute, Number(id)),
   setTitleBarColors: (color, symbolColor) => ipcRenderer.send(IPC.titleBarColors, String(color), String(symbolColor)),
   answerExtensionInstall: (id, allow) => ipcRenderer.send(IPC.answerExtensionInstall, Number(id), allow === true),
   showExtensionMenu: (extensionId) => ipcRenderer.send(IPC.extensionMenu, String(extensionId)),

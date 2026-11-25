@@ -117,7 +117,10 @@ if (!app.requestSingleInstanceLock()) {
     profiles.cleanupDeleted();
     registerProfilesIpc(profiles);
 
-    app.on('before-quit', () => profiles.finalSaveAll());
+    app.on('before-quit', () => {
+      BrowserWindowController.quitting = true; // salir no pregunta "¿Cerrar N pestañas?"
+      profiles.finalSaveAll();
+    });
     // La base de datos NO se cierra explícitamente: durante el cierre Chromium sigue emitiendo eventos (permisos que
     // consultan los service workers, títulos de páginas que terminan de cargar…), incluso después de 'exit', y una base
     // cerrada provocaba "database is not open". SQLite en modo WAL ya tiene a salvo todo lo confirmado; la base se

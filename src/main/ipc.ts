@@ -6,11 +6,11 @@ import { VaultError } from './password-vault';
 import { MAX_PASSWORD_LENGTH, MAX_USERNAME_LENGTH, hostOf as loginHost, isLoginOrigin } from '../shared/passwords';
 import { BrowserWindowController } from './window';
 import { Tab } from './tab';
-import { buildSuggestions } from './suggestions';
+import { buildSuggestions, matchesQuery, tabSuggestion, type OpenTabCandidate } from './suggestions';
 import { PERMISSION_LABELS } from './permissions';
 import { SITE_PERMISSIONS, type SitePermission } from './profile-store';
 import { dialog } from 'electron';
-import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type OpenWhere, type SuggestResult, type TopSite } from '../shared/ipc';
+import { IPC, MAX_ADDRESS_INPUT, MAX_FIND_INPUT, type DownloadAction, type OpenWhere, type Suggestion, type SuggestResult, type TopSite } from '../shared/ipc';
 import { BookmarkError } from './bookmark-store';
 import type { ProfileManager } from './profiles';
 import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
@@ -35,6 +35,24 @@ const CLEAR_PERIODS: Record<Exclude<ClearPeriod, 'all'>, number> = { hour: HOUR,
  * cuyo origen sea el de la interfaz. Cualquier otro remitente (una página web, un frame inyectado) se ignora.
  * Los ids de pestaña solo se aceptan si la pestaña pertenece a la ventana que envía el mensaje.
  */
+/**
+ * Pestañas abiertas del perfil de la ventana (de todas sus ventanas), las de esta ventana primero. Sin la pestaña activa
+ * de esta ventana: no tiene sentido "cambiar" a la que se está viendo.
+ */
+function openTabsOf(c: BrowserWindowController): Array<OpenTabCandidate & { windowLabel: string }> {
+  const windows = [c, ...[...BrowserWindowController.all].filter((w) => w !== c && w.ctx.profile === c.ctx.profile && !w.closing)];
+  const several = windows.length > 1;
+  return windows.flatMap((w, wi) =>
+    w.tabs
+      .filter((t) => !(w === c && t === c.active) && t.url && t.url !== 'about:blank')
+      .map((t) => {
+        const s = t.state;
+        const icon = s.faviconKey ? (w.faviconData(s.faviconKey) ?? null) : null;
+        return { id: t.id, title: s.title, url: s.url, icon, windowLabel: several ? (wi === 0 ? 'Esta ventana' : `Otra ventana`) : 'Cambiar a esta pestaña' };
+      }),
+  );
+}
+
 export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   const from = (e: IpcMainEvent | IpcMainInvokeEvent): BrowserWindowController | undefined => {
     const c = BrowserWindowController.fromUi(e.sender);
@@ -88,6 +106,31 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
   ipcMain.on(IPC.moveGroup, (e, id: unknown, index: unknown) => {
     const c = from(e);
     if (c && isId(id) && typeof index === 'number' && Number.isSafeInteger(index)) c.moveGroup(id, index);
+  });
+  ipcMain.handle(IPC.suggestTabs, (e, text: unknown): Suggestion[] => {
+    const c = from(e);
+    if (!c || typeof text !== 'string' || text.length > 1000) return [];
+    return openTabsOf(c)
+      .filter((t) => matchesQuery(text, t.title, t.url))
+      .slice(0, 30)
+      .map((t) => tabSuggestion(t, t.windowLabel));
+  });
+  ipcMain.on(IPC.switchToTab, (e, id: unknown) => {
+    const c = from(e);
+    if (!c || !isId(id)) return;
+    for (const w of BrowserWindowController.all) {
+      const tab = w.ctx.profile === c.ctx.profile && !w.closing ? w.tabs.find((t) => t.id === id) : undefined;
+      if (tab) {
+        w.activate(tab);
+        w.focus();
+        return;
+      }
+    }
+  });
+  ipcMain.on(IPC.toggleMute, (e, id: unknown) => {
+    const c = from(e);
+    const tab = c && tabOf(c, id);
+    if (tab) tab.toggleMute();
   });
   ipcMain.on(IPC.titleBarColors, (e, color: unknown, symbolColor: unknown) => {
     const hex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
@@ -203,7 +246,16 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     if (!c || typeof text !== 'string' || !text.trim() || text.length > 1000) return { items: [], inline: null };
     const profile = c.ctx.profile;
     const inline = profile.history.inlineCandidate(text);
+    const iconOf = (url: string) => {
+      const iconUrl = profile.history.iconUrlFor(url);
+      return iconUrl ? (profile.favicons.cached(iconUrl) ?? null) : null;
+    };
     const items = buildSuggestions({
+      tabs: openTabsOf(c),
+      bookmarks: profile.bookmarks
+        .search(text.slice(0, 200), 10)
+        .filter((b) => b.kind === 'url' && b.url)
+        .map((b) => ({ title: b.title, url: b.url!, icon: iconOf(b.url!) })),
       text,
       resolved: resolveInput(text, profile.searchTemplate),
       inline,

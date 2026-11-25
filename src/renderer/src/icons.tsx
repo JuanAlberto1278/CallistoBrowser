@@ -96,3 +96,9 @@ export const CopyIcon = () => (
 export const TrashIcon = () => (
   <svg {...base}><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5" /></svg>
 );
+export const SpeakerIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" /><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8" /></svg>
+);
+export const SpeakerMutedIcon = () => (
+  <svg {...base} width={14} height={14}><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" /><path d="M11 6l3.5 4M14.5 6 11 10" /></svg>
+);

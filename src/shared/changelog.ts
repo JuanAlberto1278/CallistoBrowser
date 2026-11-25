@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.3.0',
+    date: '2026-11-24',
+    items: [
+      'Pestañas fijadas: clic derecho → Fijar. Van a la izquierda, solo con su ícono, se recuerdan al reiniciar y no se duermen solas.',
+      'Las pestañas que suenan muestran un parlante; un clic las silencia (también desde el menú de la pestaña).',
+      'Al cerrar una ventana con 2 pestañas o más, Callisto pregunta antes (se puede desactivar en Configuración).',
+      'Menú ⋯ → Cerradas recientemente: las últimas 10 pestañas y ventanas cerradas, para reabrir la que quieras.',
+      'La barra de direcciones también sugiere pestañas abiertas («Cambiar a esta pestaña») y favoritos; si lo que escribís ya está abierto, Enter te lleva a esa pestaña.',
+      'Ctrl+Shift+A busca entre todas las pestañas abiertas.',
+    ],
+  },
+  {
     version: '1.2.0',
     date: '2026-11-24',
     items: [

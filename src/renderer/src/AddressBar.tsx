@@ -20,6 +20,8 @@ interface Props {
   security: SecurityLevel;
   zoomPercent: number;
   focusSignal: number;
+  /** Ctrl+Shift+A: la barra pasa a buscar entre las pestañas abiertas. */
+  tabSearchSignal: number;
   searchEngine: string;
   /** Dónde termina el panel de sugerencias (0 = cerrado), para que la interfaz se extienda sobre la página. */
   onOverlay: (bottom: number) => void;
@@ -30,7 +32,7 @@ interface Props {
   onResetZoom: () => void;
 }
 
-export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, searchEngine, onOverlay, starred, starrable, onSubmit, onResetZoom }: Props) {
+export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, tabSearchSignal, searchEngine, onOverlay, starred, starrable, onSubmit, onResetZoom }: Props) {
   const api = window.callisto;
   const input = useRef<HTMLInputElement>(null);
   const dropdown = useRef<HTMLDivElement>(null);
@@ -44,10 +46,13 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
   const [hovered, setHovered] = useState<number | null>(null);
   const [inline, setInline] = useState<SuggestResult['inline']>(null);
   const [open, setOpen] = useState(false);
+  /** Buscando entre las pestañas abiertas (Ctrl+Shift+A): la lista son pestañas y Enter va a la elegida. */
+  const [tabMode, setTabMode] = useState(false);
   const seq = useRef(0);
 
   const close = () => {
     seq.current++;
+    setTabMode(false);
     setOpen(false);
     setItems([]);
     setInline(null);
@@ -73,9 +78,30 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
     input.current?.select();
   }, [focusSignal]);
 
+  const requestTabs = (typed: string) => {
+    const id = ++seq.current;
+    void api.suggestTabs(typed).then((res) => {
+      if (id !== seq.current) return;
+      setItems(res);
+      setSelected(0);
+      setOpen(true);
+    });
+  };
+
+  useEffect(() => {
+    if (tabSearchSignal === 0) return;
+    setEditing(true);
+    setText('');
+    setInline(null);
+    setHovered(null);
+    setTabMode(true);
+    input.current?.focus();
+    requestTabs('');
+  }, [tabSearchSignal]);
+
   // Lo que se ve en la barra: lo escrito + el autocompletado, o la sugerencia elegida con las flechas
   const chosen = selected > 0 ? items[selected] : undefined;
-  const value = chosen ? (chosen.fill ?? chosen.url) : inline ? text + inline.completion : text;
+  const value = tabMode ? text : chosen ? (chosen.fill ?? chosen.url) : inline ? text + inline.completion : text;
 
   // El autocompletado queda seleccionado: seguir escribiendo lo reemplaza, Supr/Retroceso lo quita
   useLayoutEffect(() => {
@@ -87,6 +113,11 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
     const el = dropdown.current;
     onOverlay(open && el ? el.getBoundingClientRect().bottom : 0);
   }, [open, items, onOverlay]);
+
+  // La elegida con el teclado siempre a la vista (la lista de pestañas puede ser larga)
+  useLayoutEffect(() => {
+    dropdown.current?.querySelector('.suggestion.selected')?.scrollIntoView({ block: 'nearest' });
+  }, [selected, items]);
 
   const requestSuggestions = (typed: string, allowInline: boolean) => {
     const id = ++seq.current;
@@ -112,10 +143,26 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
     onSubmit(value);
   };
 
+  /** Ir a una pestaña abierta en lugar de navegar. */
+  const switchTo = (item: Suggestion) => {
+    if (item.tabId === undefined) return;
+    setEditing(false);
+    setText(displayUrl(url));
+    close();
+    input.current?.blur();
+    api.switchToTab(item.tabId);
+  };
+
+  const pick = (item: Suggestion) => (item.kind === 'tab' ? switchTo(item) : submit(item.url));
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (chosen) submit(chosen.url);
+      if (tabMode) {
+        if (items[selected]) switchTo(items[selected]);
+      } else if (chosen) pick(chosen);
+      // Lo escrito ya está abierto en otra pestaña (va primero): Enter lleva a esa pestaña
+      else if (items[0]?.kind === 'tab' && open) switchTo(items[0]);
       else if (inline) submit(inline.url);
       else submit(text);
     } else if (e.key === 'ArrowDown' && open) {
@@ -126,7 +173,12 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
       setSelected((s) => Math.max(s - 1, 0));
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      if (open || inline) {
+      if (tabMode) {
+        close();
+        setEditing(false);
+        setText(displayUrl(url));
+        input.current?.blur();
+      } else if (open || inline) {
         close();
       } else if (editing) {
         setEditing(false);
@@ -156,7 +208,8 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
         aria-controls="suggestions"
         spellCheck={false}
         autoComplete="off"
-        placeholder={`Buscá en ${searchEngine} o escribí una dirección`}
+        placeholder={tabMode ? 'Buscá entre las pestañas abiertas' : `Buscá en ${searchEngine} o escribí una dirección`}
+        data-mode={tabMode ? 'tabs' : 'address'}
         value={value}
         onChange={(e) => {
           const next = e.target.value;
@@ -166,13 +219,18 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
           setText(next);
           setInline(null);
           setSelected(0);
-          requestSuggestions(next, appended);
+          if (tabMode) requestTabs(next);
+          else requestSuggestions(next, appended);
         }}
         onFocus={(e) => e.currentTarget.select()}
         onMouseUp={(e) => e.preventDefault()}
         onBlur={() => {
+          const wasTabMode = tabMode;
           close();
-          if (!editing) setText(displayUrl(url));
+          if (wasTabMode) {
+            setEditing(false);
+            setText(displayUrl(url));
+          } else if (!editing) setText(displayUrl(url));
         }}
         onKeyDown={onKeyDown}
       />
@@ -197,22 +255,29 @@ export function AddressBar({ tabId, url, security, zoomPercent, focusSignal, sea
         </button>
       )}
       {open && (
-        <div className="suggestions" id="suggestions" role="listbox" ref={dropdown} data-testid="suggestions">
+        <div className={`suggestions ${tabMode ? 'tab-mode' : ''}`} id="suggestions" role="listbox" ref={dropdown} data-testid="suggestions">
+          {tabMode && items.length === 0 && (
+            <div className="suggestion empty" data-testid="suggestions-empty">
+              <span />
+              <span className="suggestion-detail">{text.trim() ? 'Ninguna pestaña abierta coincide' : 'No hay otras pestañas abiertas'}</span>
+            </div>
+          )}
           {items.map((item, i) => (
             <div
-              key={item.url}
+              key={`${item.kind}:${item.tabId ?? item.url}`}
               role="option"
               aria-selected={i === selected}
               data-testid="suggestion"
               data-kind={item.kind}
+              data-tab-id={item.tabId}
               className={`suggestion ${i === selected ? 'selected' : ''} ${i === hovered ? 'hovered' : ''}`}
               onMouseDown={(e) => e.preventDefault()} // no sacar el foco de la barra
               onMouseEnter={() => setHovered(i)}
               onMouseLeave={() => setHovered(null)}
-              onClick={() => submit(item.url)}
+              onClick={() => pick(item)}
             >
               <span className="suggestion-icon" aria-hidden="true">
-                {item.kind === 'search' ? <SearchIcon /> : item.icon ? <img src={item.icon} alt="" width={16} height={16} /> : <GlobeIcon />}
+                {item.kind === 'search' ? <SearchIcon /> : item.icon ? <img src={item.icon} alt="" width={16} height={16} /> : item.kind === 'bookmark' ? <StarIcon filled={false} /> : <GlobeIcon />}
               </span>
               <span className="suggestion-text">{item.text}</span>
               <span className="suggestion-detail">{item.detail}</span>
