@@ -8,6 +8,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.2.0',
+    date: '2026-11-24',
+    items: [
+      'Las pestañas van en la barra de título, en la misma fila que los botones de minimizar, maximizar y cerrar (como en Edge y Chrome).',
+      'Los botones de la ventana toman los colores del tema, y al pasar por maximizar aparecen los diseños de ajuste de Windows 11.',
+      'El espacio libre junto a las pestañas arrastra la ventana; el doble clic la maximiza y el clic derecho abre el menú de Windows.',
+    ],
+  },
+  {
     version: '1.1.0',
     date: '2026-11-24',
     items: [
