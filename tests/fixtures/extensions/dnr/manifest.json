@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Callisto: reglas de bloqueo",
+  "version": "1.0",
+  "description": "Extensión de prueba de Callisto: reglas de declarativeNetRequest del manifiesto, dinámicas y de sesión (1.6.1).",
+  "permissions": ["declarativeNetRequest", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "sw.js" },
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "activas", "enabled": true, "path": "activas.json" },
+      { "id": "apagadas", "enabled": false, "path": "apagadas.json" }
+    ]
+  }
+}

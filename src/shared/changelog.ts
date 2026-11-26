@@ -8,6 +8,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.6.1',
+    date: '2026-11-25',
+    items: [
+      'Los bloqueadores de anuncios y rastreadores que usan reglas del manifiesto ahora bloquean desde que los instalás (antes algunos quedaban instalados sin bloquear nada). uBlock Origin Lite ya funcionaba y sigue igual.',
+    ],
+  },
+  {
     version: '1.6.0',
     date: '2026-11-25',
     items: [

@@ -2,6 +2,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { clearOnExit, clearOnExitPending, markClearOnExit } from './browsing-data';
 import { hasClearOnExit } from '../shared/settings';
 import { importSources } from './importer';
+import { registerDnrDefaults } from './extensions/dnr-defaults';
 import { BROWSER_NAMES } from '../shared/import';
 import { join } from 'node:path';
 import { webContents, type BaseWindow, type Session, type WebContents } from 'electron';
@@ -125,6 +126,8 @@ export class ProfileManager implements ProfilesApi {
     registerNativeMessaging(extensions, { parentWindow: () => this.windowFor(profile, null)?.win ?? null });
     // Scripts de usuario (1.4.4): solo con "Permitir scripts de usuario" activado para la extensión
     extensions.userScripts = new UserScripts(extensions);
+    // Reglas de bloqueo activas en el manifiesto (1.6.1)
+    registerDnrDefaults(extensions);
     const rt: Runtime = { ctx: this.makeContext(profile, closedTabs, saver), saver, store, noticeShown: false };
     this.runtimes.set(id, rt);
     return rt;

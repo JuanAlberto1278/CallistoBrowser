@@ -9,6 +9,7 @@
 //    proxy, system.display, downloads, topSites, omnibox, más funciones de tabs (captureVisibleTab, move, duplicate,
 //    discard, highlight, detectLanguage) y runtime.onInstalled / onStartup. Ver src/main/extensions/browser-apis.ts.
 import { contextBridge, ipcRenderer } from 'electron';
+import { DNR_IPC, dnrDefaultsPlan, ruleResourcesOf, type DnrDefaultsStep } from '../shared/dnr-defaults';
 
 const inExtension = process.type === 'service-worker' || (typeof location !== 'undefined' && location.protocol === 'chrome-extension:');
 
@@ -30,6 +31,21 @@ const bridge = {
   removeListener: (name: string, cb: (...args: unknown[]) => void) => {
     listeners.get(name)?.delete(cb);
   },
+  /**
+   * Reglas de bloqueo activas en el manifiesto (1.6.1): ¿qué paso toca para esta versión? Solo en el service worker
+   * (ahí Callisto registra el canal al arrancar; en una página, la pregunta síncrona no tendría quién la conteste).
+   */
+  dnrStep: (extensionId: string, version: string): DnrDefaultsStep => {
+    if (process.type !== 'service-worker') return null;
+    try {
+      const v: unknown = ipcRenderer.sendSync(DNR_IPC.step, extensionId, version);
+      return v === 'install' || v === 'update' || v === 'legacy' ? v : null;
+    } catch {
+      return null;
+    }
+  },
+  dnrPlan: (step: DnrDefaultsStep, manifest: unknown, enabled: string[]) => dnrDefaultsPlan(step, ruleResourcesOf(manifest), enabled),
+  dnrDone: (extensionId: string, version: string) => ipcRenderer.send(DNR_IPC.done, extensionId, version),
   /** ¿El usuario permitió los scripts de usuario de esta extensión? (síncrono, como lo necesita la API; null: no se sabe) */
   userScriptsAllowed: (extensionId: string): boolean | null => {
     try {
@@ -80,6 +96,27 @@ function mainWorld(b: Bridge): void {
   const manifest = (chrome.runtime?.getManifest?.() ?? {}) as { permissions?: unknown[]; omnibox?: { keyword?: unknown } };
   const permissions = (manifest.permissions ?? []).filter((p): p is string => typeof p === 'string');
   const has = (p: string) => permissions.includes(p);
+  // ---- 1.6.1: reglas de bloqueo que el manifiesto marca activas. Chrome las activa al instalar o actualizar;
+  // Electron no. Se hace acá, antes de que corra el código de la extensión (ver src/main/extensions/dnr-defaults.ts).
+  const dnr = (chrome as Record<string, unknown>).declarativeNetRequest as
+    | { updateEnabledRulesets(o: { enableRulesetIds: string[]; disableRulesetIds: string[] }): Promise<void>; getEnabledRulesets(): Promise<string[]> }
+    | undefined;
+  const version = (manifest as { version?: unknown }).version;
+  if (dnr && typeof version === 'string' && (has('declarativeNetRequest') || has('declarativeNetRequestWithHostAccess'))) {
+    const step = b.dnrStep(id, version);
+    if (step) {
+      const apply = (enabled: string[]) => {
+        const plan = b.dnrPlan(step, manifest, enabled);
+        if (!plan) return b.dnrDone(id, version);
+        dnr.updateEnabledRulesets(plan).then(
+          () => b.dnrDone(id, version),
+          (e: unknown) => console.error('callisto: reglas de bloqueo del manifiesto', e),
+        );
+      };
+      if (step === 'legacy') dnr.getEnabledRulesets().then(apply, (e: unknown) => console.error('callisto: reglas de bloqueo del manifiesto', e));
+      else apply([]);
+    }
+  }
   /** Reemplaza (o agrega) una propiedad: algunas existen en Chromium sin funcionar (downloads, proxy, topSites…). */
   const def = (obj: object | undefined, key: string, value: unknown) => {
     if (!obj) return;
