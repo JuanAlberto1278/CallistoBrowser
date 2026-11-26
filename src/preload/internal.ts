@@ -26,6 +26,11 @@ const api: CallistoInternalApi = {
     installUpdate: () => ipcRenderer.send(INTERNAL_IPC.settingsInstallUpdate),
     makeDefault: () => ipcRenderer.send(INTERNAL_IPC.settingsMakeDefault),
     currentPages: () => ipcRenderer.invoke(INTERNAL_IPC.settingsCurrentPages),
+    importSources: () => ipcRenderer.invoke(INTERNAL_IPC.importSources),
+    importBrowser: (sourceId, what) => ipcRenderer.invoke(INTERNAL_IPC.importBrowser, String(sourceId), { bookmarks: what?.bookmarks === true, history: what?.history === true }),
+    importPasswords: () => ipcRenderer.invoke(INTERNAL_IPC.importPasswords),
+    resolvePasswordConflicts: (token, replace) => ipcRenderer.invoke(INTERNAL_IPC.importResolve, String(token), replace === true),
+    exportPasswords: () => ipcRenderer.invoke(INTERNAL_IPC.exportPasswords),
     clearData: (r) => ipcRenderer.invoke(INTERNAL_IPC.settingsClearData, { period: String(r.period), history: r.history === true, siteData: r.siteData === true, cache: r.cache === true }),
   },
   downloads: {

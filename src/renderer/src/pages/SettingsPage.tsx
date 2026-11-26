@@ -6,6 +6,7 @@ import { UpdatesRow } from './Updates';
 import { CHANGELOG } from '../../../shared/changelog';
 import { MemoryNow, NeverSleepSites } from './Performance';
 import { ClearOnExitRows, StartupPages } from './Startup';
+import { ImportSection } from './Import';
 import type { SettingsSnapshot } from '../../../shared/internal-api';
 import type { SearchEngineId, Settings } from '../../../shared/settings';
 
@@ -183,6 +184,8 @@ export function SettingsPage() {
           </button>
         </div>
       </section>
+
+      <ImportSection />
 
       <section className="card" aria-labelledby="s-perms">
         <h2 id="s-perms">Permisos y ajustes de sitios</h2>

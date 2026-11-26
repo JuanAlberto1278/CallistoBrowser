@@ -8,6 +8,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.6.0',
+    date: '2026-11-25',
+    items: [
+      'Importá tus favoritos e historial desde Chrome o Edge: Configuración → Importar y exportar. Los favoritos quedan en su propia carpeta («Importados de Chrome») dentro de Otros favoritos.',
+      'Importá tus contraseñas con el archivo CSV que exportan Chrome, Edge o Firefox. Si ya tenías otra contraseña para el mismo sitio y usuario, Callisto te pregunta cuál conservar.',
+      'Exportá tus contraseñas a un archivo CSV (Windows verifica tu identidad antes).',
+      'La primera vez que abrís un perfil nuevo, si tenés Chrome o Edge, Callisto ofrece importar.',
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-11-25',
     items: [

@@ -640,6 +640,8 @@ export class Tab extends EventEmitter<TabEvents> {
     this.noticeState = null;
     this.queueState();
     if (action === 'stop' && !this.webContents.isDestroyed()) this.webContents.forcefullyCrashRenderer();
+    // Aviso del primer inicio (1.6): Configuración → Importar y exportar
+    if (action === 'open-import') this.emit('open-url', 'callisto://settings/#s-import');
     const blocked = this.blockedPopup;
     if ((action === 'open-popup' || action === 'allow-popups') && blocked) {
       this.blockedPopup = null;

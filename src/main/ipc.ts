@@ -17,13 +17,17 @@ import { BookmarkError } from './bookmark-store';
 import type { ProfileManager } from './profiles';
 import { PROFILE_COLORS, PROFILE_COLOR_IDS, isProfileColor, isProfileId } from '../shared/profiles';
 import type { ProfilesSnapshot } from '../shared/internal-api';
-import { INTERNAL_IPC, type ClearPeriod, type ExtensionsSnapshot, type HistoryEntry, type MemoryUsage, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
+import { INTERNAL_IPC, type PasswordExportResult, type PasswordImportResult, type ClearPeriod, type ExtensionsSnapshot, type HistoryEntry, type MemoryUsage, type PasswordResult, type PasswordsSnapshot, type SettingsSnapshot } from '../shared/internal-api';
 import { internalPageOf, type InternalPage } from '../shared/internal-pages';
 import { resolveInput } from '../shared/omnibox';
 import { SEARCH_ENGINES, type SearchEngineId } from '../shared/settings';
 import { zoomPercent } from '../shared/zoom';
 import { answerPasswordOffer } from './passwords';
 import { clearBrowsingData } from './browsing-data';
+import { importFrom, importSources } from './importer';
+import { loginsFromCsv, loginsToCsv, MAX_CSV_BYTES, type CsvLogin, type ImportResult } from '../shared/import';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Profile } from './profile';
 import { sanitizeShortcuts, saveShortcut, SHORTCUT_ERRORS } from '../shared/shortcuts';
@@ -91,7 +95,7 @@ export function registerIpc(isTrustedUiUrl: (url: string) => boolean): void {
     if (typeof width === 'number') panelOf(e)?.resizeSidePanel(width);
   });
   ipcMain.on(IPC.noticeAction, (e, id: unknown, action: unknown) => {
-    if (typeof id === 'number' && (action === 'wait' || action === 'stop' || action === 'open-popup' || action === 'allow-popups')) from(e)?.active.noticeAction(id, action);
+    if (typeof id === 'number' && (action === 'wait' || action === 'stop' || action === 'open-popup' || action === 'allow-popups' || action === 'open-import')) from(e)?.active.noticeAction(id, action);
   });
   ipcMain.on(IPC.sleepTab, (e, id: unknown) => {
     const c = from(e);
@@ -624,6 +628,7 @@ function registerInternalIpc(): void {
   });
 
   registerPasswordsPageIpc();
+  registerImportIpc();
   registerExtensionsPageIpc();
   // Tema de las páginas internas: cualquiera de ellas (desde su frame principal)
   ipcMain.handle(INTERNAL_IPC.themeGet, (e) => {
@@ -700,6 +705,121 @@ async function authorizePasswords(ctx: InternalContext): Promise<PasswordResult 
 const NOT_VERIFIED: PasswordResult = { error: 'No se verificó tu identidad.' };
 const HELLO_FAILED: PasswordResult = { error: 'Windows no pudo verificar tu identidad (no respondió Windows Hello ni el cuadro de contraseña).' };
 const vaultError = (e: unknown): PasswordResult => ({ error: e instanceof VaultError ? e.message : 'No se pudo completar la operación.' });
+
+// ---------------------------------------------------------------- importar y exportar (1.6)
+
+/** Choques de una importación de contraseñas, esperando la decisión (solo en memoria, unos minutos). */
+const pendingConflicts = new Map<string, { profile: Profile; logins: CsvLogin[]; timer: NodeJS.Timeout }>();
+const CONFLICT_TTL = 10 * 60_000;
+
+function registerImportIpc(): void {
+  const ctxOf = (e: IpcMainInvokeEvent) => fromInternal(e, 'settings') ?? denied();
+  // En una ventana privada, lo importado va al perfil de origen (como "Borrar datos")
+  const rootOf = (ctx: InternalContext) => ctx.profile.parent ?? ctx.profile;
+
+  ipcMain.handle(INTERNAL_IPC.importSources, (e) => {
+    ctxOf(e);
+    return importSources();
+  });
+  ipcMain.handle(INTERNAL_IPC.importBrowser, (e, sourceId: unknown, what: unknown): ImportResult => {
+    const ctx = ctxOf(e);
+    if (typeof sourceId !== 'string' || sourceId.length > 200 || !isObj(what)) return { error: 'Pedido no válido.' };
+    return importFrom(rootOf(ctx), sourceId, { bookmarks: what.bookmarks === true, history: what.history === true });
+  });
+
+  ipcMain.handle(INTERNAL_IPC.importPasswords, async (e): Promise<PasswordImportResult> => {
+    const ctx = ctxOf(e);
+    const vault = rootOf(ctx).passwords;
+    const status = await vault.open();
+    if (status !== 'ready') return { error: status === 'unreadable' ? 'Las contraseñas guardadas no se pueden descifrar con esta cuenta de Windows.' : 'El cifrado de Windows no está disponible.' };
+    const pick = await dialog.showOpenDialog(ctx.win.win, { title: 'Importar contraseñas', properties: ['openFile'], filters: [{ name: 'Archivo CSV', extensions: ['csv'] }] });
+    const path = pick.filePaths[0];
+    if (pick.canceled || !path) return { canceled: true };
+    let text: string;
+    try {
+      if (statSync(path).size > MAX_CSV_BYTES) return { error: 'El archivo es demasiado grande para ser una lista de contraseñas.' };
+      text = readFileSync(path, 'utf8');
+    } catch {
+      return { error: 'No se pudo leer el archivo.' };
+    }
+    const parsed = loginsFromCsv(text);
+    if ('error' in parsed) return { error: parsed.error };
+    let added = 0;
+    let unchanged = 0;
+    const conflicts: CsvLogin[] = [];
+    try {
+      for (const l of parsed.logins) {
+        const check = await vault.check(l.origin, l.username, l.password);
+        if (check.kind === 'new') {
+          await vault.save(l.origin, l.username, l.password);
+          added++;
+        } else if (check.kind === 'same') unchanged++;
+        else conflicts.push(l);
+      }
+    } catch (err) {
+      return vaultError(err) as { error: string };
+    }
+    let token: string | null = null;
+    if (conflicts.length) {
+      token = randomUUID();
+      const t = token;
+      pendingConflicts.set(t, { profile: rootOf(ctx), logins: conflicts, timer: setTimeout(() => pendingConflicts.delete(t), CONFLICT_TTL) });
+    }
+    return { added, unchanged, skipped: parsed.skipped, conflicts: conflicts.map((c) => ({ origin: c.origin, username: c.username })), token };
+  });
+
+  ipcMain.handle(INTERNAL_IPC.importResolve, async (e, token: unknown, replace: unknown) => {
+    const ctx = ctxOf(e);
+    const pending = typeof token === 'string' ? pendingConflicts.get(token) : undefined;
+    if (!pending || pending.profile !== rootOf(ctx)) return { error: 'Esa importación ya no está disponible. Volvé a importar el archivo.' };
+    pendingConflicts.delete(token as string);
+    clearTimeout(pending.timer);
+    if (replace !== true) return { replaced: 0 };
+    let replaced = 0;
+    try {
+      for (const l of pending.logins) {
+        await pending.profile.passwords.save(l.origin, l.username, l.password);
+        replaced++;
+      }
+    } catch (err) {
+      return vaultError(err) as { error: string };
+    }
+    return { replaced };
+  });
+
+  // Exportar: Windows verifica la identidad siempre (no vale una verificación reciente, como en Chrome)
+  ipcMain.handle(INTERNAL_IPC.exportPasswords, async (e): Promise<PasswordExportResult> => {
+    const ctx = ctxOf(e);
+    const vault = rootOf(ctx).passwords;
+    const status = await vault.open();
+    if (status !== 'ready') return { error: status === 'unreadable' ? 'Las contraseñas guardadas no se pueden descifrar con esta cuenta de Windows.' : 'El cifrado de Windows no está disponible.' };
+    const entries = vault.list();
+    if (!entries.length) return { error: 'No hay contraseñas guardadas para exportar.' };
+    const verified = await verifyUser(ctx.win.win, 'Verificá tu identidad para exportar las contraseñas guardadas en Callisto.');
+    if (verified !== 'verified') return verified === 'rejected' ? (NOT_VERIFIED as { error: string }) : (HELLO_FAILED as { error: string });
+    const pick = await dialog.showSaveDialog(ctx.win.win, {
+      title: 'Exportar contraseñas',
+      defaultPath: join(app.getPath('documents'), 'Contraseñas de Callisto.csv'),
+      filters: [{ name: 'Archivo CSV', extensions: ['csv'] }],
+    });
+    if (pick.canceled || !pick.filePath) return { canceled: true };
+    const rows: CsvLogin[] = [];
+    let failed = 0;
+    for (const l of entries) {
+      try {
+        rows.push({ origin: l.origin, username: l.username, password: await vault.password(l.id) });
+      } catch {
+        failed++; // dañada: no se puede descifrar
+      }
+    }
+    try {
+      writeFileSync(pick.filePath, loginsToCsv(rows), 'utf8');
+    } catch {
+      return { error: 'No se pudo guardar el archivo.' };
+    }
+    return { exported: rows.length, failed };
+  });
+}
 
 function registerPasswordsPageIpc(): void {
   const ctxOf = (e: IpcMainInvokeEvent) => fromInternal(e, 'passwords') ?? denied();

@@ -41,7 +41,7 @@ export interface SiteInfo {
 export const SITE_ACTIONS = ['zoom-in', 'zoom-out', 'zoom-reset', 'toggle-never-sleep', 'reload', 'clear-data', 'open-settings', 'open-passwords'] as const;
 export type SiteAction = (typeof SITE_ACTIONS)[number];
 
-export type NoticeAction = 'wait' | 'stop' | 'open-popup' | 'allow-popups';
+export type NoticeAction = 'wait' | 'stop' | 'open-popup' | 'allow-popups' | 'open-import';
 
 export interface Notice {
   id: number;

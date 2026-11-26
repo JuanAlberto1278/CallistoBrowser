@@ -1,6 +1,8 @@
 import { existsSync, rmSync } from 'node:fs';
 import { clearOnExit, clearOnExitPending, markClearOnExit } from './browsing-data';
 import { hasClearOnExit } from '../shared/settings';
+import { importSources } from './importer';
+import { BROWSER_NAMES } from '../shared/import';
 import { join } from 'node:path';
 import { webContents, type BaseWindow, type Session, type WebContents } from 'electron';
 import { ExtensionManager, type ExtensionHost } from './extensions/manager';
@@ -265,11 +267,25 @@ export class ProfileManager implements ProfilesApi {
     } else if (!last) last = new BrowserWindowController(rt.ctx, { url: opts.url });
     else if (opts.url) last.newTab({ url: opts.url });
 
+    this.offerImport(rt.ctx.profile, last);
     if (rt.ctx.profile.recoveredDatabase && !rt.noticeShown) {
       rt.noticeShown = true;
       last.active.showNotice('warning', 'Los datos de este perfil (historial, sesión) estaban dañados y se empezó de nuevo. La copia dañada se guardó aparte.');
     }
     return last;
+  }
+
+  /**
+   * La primera vez que se abre un perfil nuevo (sin historial), si hay Chrome o Edge en la computadora: un aviso que
+   * ofrece importar (1.6). Una sola vez por perfil; los perfiles que ya se usaban no lo ven.
+   */
+  private offerImport(profile: Profile, win: BrowserWindowController): void {
+    if (profile.isPrivate || profile.kv.get('import.offered') === true) return;
+    profile.kv.set('import.offered', true);
+    if (profile.history.count() > 0) return;
+    const browsers = [...new Set(importSources().map((s) => BROWSER_NAMES[s.browser]))];
+    if (!browsers.length) return;
+    win.active.showNotice('info', `Encontramos ${browsers.join(' y ')} en esta computadora. ¿Querés traer tus favoritos, historial y contraseñas?`, [{ id: 'open-import', label: 'Importar…' }]);
   }
 
   /** Ventana privada del perfil de `from` (o del mismo perfil de origen, si `from` ya es privada). */

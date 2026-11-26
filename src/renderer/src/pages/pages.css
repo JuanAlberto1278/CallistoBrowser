@@ -381,3 +381,10 @@ a { color: var(--accent); }
 
 /* "Permitir scripts de usuario" en la tarjeta de una extensión (1.4.4) */
 .ext-userscripts { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
+
+/* Importar y exportar (1.6) */
+.import-passwords { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 4px; }
+.import-conflicts { margin: 4px 0 8px; padding: 10px 12px; border-radius: 8px; background: var(--hover); }
+.import-conflicts p { margin: 0 0 6px; }
+.import-conflicts ul { margin: 0 0 8px; padding-left: 20px; }
+.import-conflict-actions { display: flex; gap: 8px; }

@@ -87,6 +87,50 @@ export class HistoryStore {
   }
 
   /**
+   * Visitas traídas de otro navegador (1.6), de una vez. Solo las de los últimos RETENTION_DAYS días (lo que guarda
+   * Callisto); una visita que ya está (misma dirección y momento) no se repite, así importar dos veces no duplica.
+   * Devuelve cuántas se agregaron.
+   */
+  importVisits(rows: Iterable<{ url: string; title: string; time: number; typed: boolean }>): number {
+    const now = this.now();
+    const since = now - RETENTION_DAYS * DAY;
+    const upsert = this.db.prepare(
+      `INSERT INTO urls (url, host, title, visit_count, typed_count, last_visit) VALUES (?, ?, ?, 0, 0, ?)
+       ON CONFLICT(url) DO UPDATE SET title = CASE WHEN urls.title = '' THEN excluded.title ELSE urls.title END`,
+    );
+    const idOf = this.db.prepare('SELECT id FROM urls WHERE url = ?');
+    const exists = this.db.prepare('SELECT 1 FROM visits WHERE url_id = ? AND time = ?');
+    const insert = this.db.prepare('INSERT INTO visits (url_id, time, typed) VALUES (?, ?, ?)');
+    const touched = new Set<number>();
+    let added = 0;
+    this.db.exec('BEGIN');
+    try {
+      for (const r of rows) {
+        if (!isRecordable(r.url) || !(r.time >= since && r.time <= now)) continue;
+        upsert.run(r.url, hostOf(r.url), r.title.slice(0, 1024), r.time);
+        const id = (idOf.get(r.url) as { id: number }).id;
+        if (exists.get(id, r.time)) continue;
+        insert.run(id, r.time, r.typed ? 1 : 0);
+        touched.add(id);
+        added++;
+      }
+      // Contadores y última visita de las direcciones que recibieron visitas
+      const recount = this.db.prepare(
+        `UPDATE urls SET visit_count = (SELECT count(*) FROM visits WHERE url_id = urls.id),
+           typed_count = (SELECT count(*) FROM visits WHERE url_id = urls.id AND typed = 1),
+           last_visit = (SELECT max(time) FROM visits WHERE url_id = urls.id) WHERE id = ?`,
+      );
+      for (const id of touched) recount.run(id);
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+    // Sin aviso de "visitado": como en Chrome, importar no cuenta como visitar (chrome.history.onVisited)
+    return added;
+  }
+
+  /**
    * Direcciones (no visitas) con su última visita en [startTime, endTime), las más recientes primero
    * (chrome.history.search). Con texto, el que esté en el título o la dirección.
    */

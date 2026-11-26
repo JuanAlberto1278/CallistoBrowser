@@ -1,3 +1,4 @@
+import type { ImportResult, ImportSource } from './import';
 import type { SiteSettingKind } from './site-settings';
 // API de las páginas internas (callisto://history, callisto://settings). Cada página solo puede usar su parte:
 // el proceso principal comprueba qué página envía cada pedido.
@@ -103,6 +104,11 @@ export const INTERNAL_IPC = {
   settingsResetDownloadDir: 'callisto-internal:settings-reset-download-dir',
   settingsClearData: 'callisto-internal:settings-clear-data',
   settingsCurrentPages: 'callisto-internal:settings-current-pages',
+  importSources: 'callisto-internal:import-sources',
+  importBrowser: 'callisto-internal:import-browser',
+  importPasswords: 'callisto-internal:import-passwords',
+  importResolve: 'callisto-internal:import-resolve',
+  exportPasswords: 'callisto-internal:export-passwords',
   settingsDefaultBrowser: 'callisto-internal:settings-default-browser',
   settingsUpdateStatus: 'callisto-internal:settings-update-status',
   settingsMemory: 'callisto-internal:settings-memory',
@@ -167,6 +173,15 @@ export interface PasswordsSnapshot {
 }
 
 /** Resultado de lo que requiere verificar la identidad: `error` = cancelado, rechazado o no se pudo. */
+/** Importar contraseñas de un CSV (1.6). Los choques (mismo sitio y usuario, otra contraseña) esperan la decisión. */
+export type PasswordImportResult =
+  | { canceled: true }
+  | { error: string }
+  | { added: number; unchanged: number; skipped: number; conflicts: Array<{ origin: string; username: string }>; token: string | null };
+
+/** Exportar contraseñas a un CSV (1.6). */
+export type PasswordExportResult = { canceled: true } | { error: string } | { exported: number; failed: number };
+
 export interface PasswordResult {
   password?: string;
   error?: string;
@@ -197,6 +212,15 @@ export interface CallistoInternalApi {
     clearData(request: ClearDataRequest): Promise<void>;
     /** Las páginas web abiertas en la ventana (para "Abrir páginas específicas"). */
     currentPages(): Promise<string[]>;
+    /** Perfiles de Chrome y Edge encontrados en esta computadora (1.6). */
+    importSources(): Promise<ImportSource[]>;
+    importBrowser(sourceId: string, what: { bookmarks: boolean; history: boolean }): Promise<ImportResult>;
+    /** Elegir un CSV de contraseñas (con el cuadro de Windows) e importarlo. */
+    importPasswords(): Promise<PasswordImportResult>;
+    /** Qué hacer con los choques: reemplazar las guardadas o conservarlas. */
+    resolvePasswordConflicts(token: string, replace: boolean): Promise<{ replaced: number } | { error: string }>;
+    /** Windows verifica la identidad, después se elige dónde guardar el CSV. */
+    exportPasswords(): Promise<PasswordExportResult>;
     /** ¿Callisto está registrado (instalado) y es el navegador predeterminado? */
     defaultBrowser(): Promise<{ registered: boolean; isDefault: boolean }>;
     /** Abre la página de Windows para elegir el navegador predeterminado. */
