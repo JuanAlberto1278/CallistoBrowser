@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.0.0',
+    date: '2026-11-26',
+    items: [
+      'Callisto 2.0 junta todo lo que llegó desde la 1.3 (el detalle de cada versión, más abajo).',
+      'Pestañas bajo control: pestañas fijadas, el parlante para silenciar, preguntar antes de cerrar varias pestañas, las cerradas recientemente y buscar entre las pestañas abiertas y los favoritos desde la barra (Ctrl+Shift+A).',
+      'Recursos a la vista: Administrador de tareas (Shift+Esc), aviso cuando una página no responde o una pestaña de fondo usa mucha CPU, dormir antes las pestañas si falta memoria y cuánta memoria se liberó hoy.',
+      'Control por sitio: el panel del candado (permisos, sonido, ventanas emergentes, JavaScript, imágenes, zoom y borrar los datos del sitio), el bloqueador de ventanas emergentes, páginas al iniciar, borrar datos al cerrar y accesos directos propios en la nueva pestaña.',
+      'Llegar a Callisto: importar favoritos e historial desde Chrome y Edge, y contraseñas desde y hacia un archivo CSV.',
+      'Extensiones que funcionan: muchas más APIs de Chrome, panel lateral, programas instalados, Tampermonkey y Violentmonkey, y los bloqueadores de anuncios con sus reglas.',
+    ],
+  },
+  {
     version: '1.6.1',
     date: '2026-11-25',
     items: [
